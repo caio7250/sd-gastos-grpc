@@ -31,56 +31,77 @@ formulário.
 ## Arquitetura
 
 ```
-   navegador                vm-client (10.128.0.3)              vm-server (10.128.0.2)
-  ┌──────────┐         ┌───────────────────────────┐      ┌────────────────────────────────┐
-  │  React   │  HTTP   │ nginx :80                 │      │ API Gateway (FastAPI)          │
-  │  (SPA)   ├────────►│   /       → web/dist      │      │ 0.0.0.0:8000                   │
-  └──────────┘  :80    │   /api/*  → ──────────────┼─────►│   JWT (401) · valida (400)     │
-                       │                           │ JSON │   JSON ──► protobuf            │
-                       │ client.py (REPL, opcional)│ +JWT │   texto ──► Claude ──► comando │
-                       └───────────────────────────┘      │        │ gRPC        │ gRPC    │
-                                                          │        ▼             ▼         │
-      firewall:                                           │  Cartões        Gastos         │
-   tcp:80   ← 0.0.0.0/0      → tag grpc-client            │  127.0.0.1:50052  127.0.0.1:50051
-   tcp:8000 ← 10.128.0.0/9   → tag grpc-server            │        ▲    gRPC     │         │
-                                                          │        └─────────────┘         │
-                                                          └────────┬───────────────┬───────┘
-                                                                   │  cards        │ expenses
-                                                                   ▼               ▼
-                                                          Cloud SQL (PostgreSQL) banco-aula-sd
-                                                          10.115.48.3:5432 · IP privado, via peering
+   navegador          vm-client              vm-server
+  ┌──────────┐    ┌──────────────┐     ┌──────────────────────┐
+  │  React   │ :80│ nginx        │     │ API Gateway (FastAPI)│
+  │  (SPA)   ├───►│  / → dist    │JSON │ 0.0.0.0:8000         │
+  └──────────┘    │  /api ───────┼────►│  JWT (401)·valida(400)│
+                  └──────────────┘+JWT │  JSON ──► protobuf    │
+                                       │  texto ─► Claude      │
+                                       └────┬─────────────┬────┘
+                                       gRPC │             │ gRPC
+                                            ▼             ▼
+                                      vm-cards        vm-expenses
+                                    Cartões :50052 ◄── Gastos :50051
+                                            │ ValidateCard │
+                                            └──────┬───────┘
+                                                   ▼
+                                       Cloud SQL (PostgreSQL)
+                                       10.115.48.3:5432 · IP privado
+
+   firewall   tcp:80    ← 0.0.0.0/0          → tag grpc-client
+              tcp:8000  ← 10.128.0.0/9       → tag grpc-server
+         800  tcp:5005x ← tags grpc-server,  → tag grpc-service   (allow)
+                          grpc-service
+         900  tcp:5005x ← 0.0.0.0/0          → tag grpc-service   (deny)
 ```
 
-Cinco saltos, cada um com um protocolo e um motivo:
+Cada serviço roda na sua própria VM. Cinco saltos, cada um com um protocolo e
+um motivo:
 
 1. **Navegador → nginx: HTTP.** O nginx da `vm-client` serve os arquivos
-   estáticos do build e repassa `/api/*` ao Gateway. É por isso que o navegador
-   vê **uma origem só** e o sistema não depende de CORS.
-2. **nginx → Gateway: HTTP/JSON com JWT.** É a única porta de entrada da API. O
-   Gateway escuta em `0.0.0.0:8000`; todo o resto da `vm-server` escuta só em
-   `127.0.0.1`.
-3. **Gateway → microsserviços: gRPC/protobuf.** O Gateway desserializa o JSON,
-   valida, e serializa em protobuf para o serviço dono do dado.
-4. **Gastos → Cartões: gRPC.** Antes de gravar ou alterar um gasto, o serviço de
-   Gastos pergunta ao de Cartões se o cartão existe. É a comunicação entre
-   microsserviços do sistema.
+   estáticos do build e repassa `/api/*` ao Gateway. É por isso que o
+   navegador vê **uma origem só** e o sistema não depende de CORS.
+2. **nginx → Gateway: HTTP/JSON com JWT.** É a única porta de entrada da API.
+3. **Gateway → microsserviços: gRPC/protobuf.** O Gateway desserializa o
+   JSON, valida, e serializa em protobuf para o serviço dono do dado.
+4. **Gastos → Cartões: gRPC.** Antes de gravar ou alterar um gasto, o serviço
+   de Gastos pergunta ao de Cartões se o cartão existe. É a comunicação entre
+   microsserviços do sistema, e atravessa a rede entre duas VMs.
 5. **Microsserviços → Cloud SQL: PostgreSQL**, pela rede privada. Cada serviço
-   só toca a sua tabela.
+   só toca a sua tabela — e só eles têm as credenciais do banco; o Gateway
+   não as recebe.
 
-**Uma porta aberta para a internet no sistema inteiro:** a 80 da `vm-client`. O
-Gateway só atende de dentro da VPC, os microsserviços só de dentro da própria
-`vm-server`, e o banco não tem endereço público.
+**Uma porta aberta para a internet no sistema inteiro:** a 80 da `vm-client`.
 
-**Por que os serviços gRPC escutam só em 127.0.0.1.** O enunciado exige que o
-frontend nunca fale direto com os microsserviços. Firewall não garantiria isso:
-a regra `default-allow-internal` do GCP libera todas as portas entre VMs da
-VPC. Escutando só na interface local, os serviços são inalcançáveis de fora da
-`vm-server` — qualquer que seja a regra de firewall.
+**O que protege os microsserviços.** Eles escutam em `0.0.0.0`, porque quem os
+chama vem de outra máquina. O muro é o par de regras de firewall 800/900: o
+`allow` deixa passar quem tem a tag `grpc-server` ou `grpc-service`, e o
+`deny`, logo abaixo, recusa todo o resto. A ordem é o que faz a coisa
+funcionar — a regra `default-allow-internal`, que o GCP cria sozinho e libera
+todas as portas entre VMs da VPC, tem prioridade 65534 e nunca é alcançada
+para essas portas. Sem o `deny`, a `vm-client` falaria direto com os
+microsserviços, e o requisito de o frontend falar só com o Gateway cairia.
 
-**A LLM vive no Gateway.** Ela entrou na borda, e não mais no cliente, porque a
-chave da API não pode ir para o navegador. Os microsserviços continuam
-recebendo só protobuf: nenhum deles sabe que existe um modelo de linguagem. O
-cliente de terminal (`client/client.py`) segue funcionando com o seu próprio
+**Rastreio.** O Gateway gera um identificador curto por requisição HTTP e o
+envia na metadata de toda chamada gRPC; o serviço de Gastos o repassa ao de
+Cartões. As três VMs logam a mesma operação com o mesmo id, e ele volta ao
+navegador no cabeçalho `X-Request-Id`:
+
+```
+vm-server    [45b51b84] RegisterExpense  JSON -> protobuf 40 bytes
+vm-expenses  [45b51b84] RegisterExpense  from 10.128.0.2  teclado 389.90 Nubank/credit
+vm-cards     [45b51b84] ValidateCard     from 10.128.0.5  Nubank / credit
+```
+
+**Prazo em toda chamada.** Todas as chamadas gRPC do Gateway passam pela mesma
+função `call()`, que fixa um deadline de 10 segundos; a chamada entre
+microsserviços usa 5. Sem prazo, um serviço lento prenderia o Gateway junto.
+
+**A LLM vive no Gateway.** Ela está na borda, e não no cliente, porque a chave
+da API não pode ir para o navegador. Os microsserviços continuam recebendo só
+protobuf: nenhum deles sabe que existe um modelo de linguagem. O cliente de
+terminal (`client/client.py`) segue funcionando com o seu próprio
 interpretador — os dois lados compartilham o mesmo módulo, em `language/`.
 
 ### Banco de dados
@@ -100,10 +121,13 @@ no PostgreSQL usando as variáveis padrão do libpq (`PGHOST`, `PGPORT`,
 O SQLite fica para desenvolvimento local e para os testes — o Mac está fora da
 VPC e não alcança o IP privado. As consultas são as mesmas nos dois.
 
-Os segredos ficam separados por VM. O `deploy.sh` envia para a `vm-server` a
-senha do banco e o segredo do JWT (em `/opt/sd-gastos-grpc/server.env`,
-legível só por root), e para a `vm-client` a chave da LLM e o login do
-Gateway. Nenhuma das duas recebe o segredo que não usa.
+Os segredos ficam separados por VM, e cada uma recebe só o que usa. A senha do
+banco vai para a `vm-cards` e a `vm-expenses`, que são as únicas que falam com
+o PostgreSQL. O segredo do JWT, o login e a chave da LLM vão para a
+`vm-server`, que é quem emite token e interpreta texto. **O Gateway não recebe
+a senha do banco, e os microsserviços não recebem o segredo do JWT** — nenhum
+dos dois teria o que fazer com ela. Todos ficam em
+`/opt/sd-gastos-grpc/server.env`, legível só por root.
 
 ## Frontend
 
@@ -111,8 +135,8 @@ React + TypeScript, compilado pelo Vite e servido como arquivos estáticos pelo
 nginx. **Ele só conhece o Gateway**: todas as chamadas saem de
 `web/src/shared/services/api.ts` para o caminho relativo `/api`, que o nginx
 (em produção) ou o proxy do Vite (em desenvolvimento) repassa. Não há endereço
-de microsserviço em lugar nenhum do código do frontend, nem como haveria — eles
-não aceitam conexão de fora da `vm-server`.
+de microsserviço em lugar nenhum do código do frontend, nem adiantaria haver —
+o firewall só deixa o Gateway alcançá-los.
 
 | Tela | O que faz | RPCs por trás |
 |---|---|---|
@@ -301,9 +325,12 @@ demonstração depende da API estar no ar.
 
 ### Com Docker: o sistema inteiro, com PostgreSQL de verdade
 
-É a mesma topologia do GCP, encolhida — o container `web` faz o papel do nginx
-da `vm-client`, `gateway` o da `vm-server`, e `db` o do Cloud SQL. Serve para
-desenvolver e como plano B na apresentação.
+É a mesma topologia do GCP, encolhida: um container por VM. `web` faz o papel
+do nginx da `vm-client`, `gateway` o da `vm-server`, `cards` e `expenses` o das
+VMs de mesmo nome, e `db` o do Cloud SQL. Cada container é um host de rede
+distinto, com IP próprio — é o ensaio fiel da separação em VMs, e nenhuma
+linha de código muda entre os dois ambientes. Serve para desenvolver e como
+plano B na apresentação.
 
 ```bash
 docker compose up --build
@@ -311,8 +338,8 @@ docker compose up --build
 ```
 
 Repare no que **não** tem porta publicada: `cards`, `expenses` e `db`. Eles só
-existem dentro da rede do compose, do mesmo jeito que nas VMs só existem dentro
-da `vm-server` e da VPC. Para conferir que os dados são reais:
+existem dentro da rede do compose, que é o papel que o par de regras de
+firewall faz no GCP. Para conferir que os dados são reais:
 
 ```bash
 docker compose exec db psql -U expenses_app -d expenses -c "SELECT * FROM expenses;"
@@ -421,31 +448,40 @@ bash infra/setup_gcp.sh                      # VMs + regras de firewall
 bash infra/deploy.sh                         # clona, instala, compila e sobe
 ```
 
-Na `vm-server` sobem três serviços do systemd — `cards`, `expenses` e
-`gateway` — que voltam sozinhos se a VM reiniciar. Na `vm-client` sobe o nginx
-com o build do frontend. Para acompanhar o servidor:
+Cada VM de backend sobe um serviço do systemd, que volta sozinho se a máquina
+reiniciar: `cards` na `vm-cards`, `expenses` na `vm-expenses`, `gateway` na
+`vm-server`. Na `vm-client` sobe o nginx com o build do frontend.
+
+A ordem importa, porque cada uma precisa do IP interno da anterior:
+**Cartões → Gastos → Gateway → frontend**. Para acompanhar, uma janela por VM:
 
 ```bash
-sudo journalctl -u gateway -u cards -u expenses -f
+sudo journalctl -u cards -f        # na vm-cards
+sudo journalctl -u expenses -f     # na vm-expenses
+sudo journalctl -u gateway -f      # na vm-server
 ```
 
-As regras de firewall criadas pelo `setup_gcp.sh`:
+O mesmo `[id]` aparece nas três: é a mesma requisição atravessando o sistema.
+
+As quatro regras de firewall criadas pelo `setup_gcp.sh`:
 
 ```
-tcp:80    ←  source-ranges 0.0.0.0/0      →  target-tags grpc-client
-tcp:8000  ←  source-ranges 10.128.0.0/9   →  target-tags grpc-server
+      tcp:80     ←  0.0.0.0/0                      →  tag grpc-client
+      tcp:8000   ←  10.128.0.0/9                   →  tag grpc-server
+ 800  tcp:5005x  ←  tags grpc-server, grpc-service →  tag grpc-service  allow
+ 900  tcp:5005x  ←  0.0.0.0/0                      →  tag grpc-service  deny
 ```
 
 A interface web é a única coisa exposta à internet. O Gateway só responde de
-dentro da VPC; os microsserviços, só de dentro da própria `vm-server`; e o
-banco não tem endereço público.
+dentro da VPC; os microsserviços, só ao Gateway e um ao outro; e o banco não
+tem endereço público.
 
 ## Requisitos do Trabalho 2
 
 | Requisito | Onde é atendido |
 |---|---|
 | Interface visual funcional | `web/` — React + TypeScript: painel com gráficos, CRUD de gastos, cartões, assistente e laboratório |
-| Frontend fala **só** com o Gateway | `web/src/shared/services/api.ts` — toda chamada sai para `/api`, que o nginx repassa ao Gateway. Não há endereço de microsserviço no frontend, e eles não aceitam conexão de fora da `vm-server` |
+| Frontend fala **só** com o Gateway | `web/src/shared/services/api.ts` — toda chamada sai para `/api`, que o nginx repassa ao Gateway. Não há endereço de microsserviço no frontend, e o firewall só deixa o Gateway alcançá-los |
 | API Gateway com framework web | `gateway/app.py` — FastAPI, ponto único de entrada |
 | Mínimo de 2 microsserviços gRPC | `server/cards_service.py` e `server/expenses_service.py` |
 | Comunicação entre microsserviços via gRPC | `ExpenseService._validate_card` chama `CardService.ValidateCard` antes de gravar e antes de alterar |
@@ -462,7 +498,7 @@ banco não tem endereço público.
 | Contrato `.proto` com estruturas de dados e serviços RPC | `proto/expenses.proto` |
 | Comunicação síncrona e eficiente | RPCs unários + 1 server-streaming (`SearchExpenses`) |
 | Regras de firewall VPC no GCP | `infra/setup_gcp.sh` |
-| Infraestrutura em nuvem (GCP) | 2 VMs + Cloud SQL — veja [`docs/GCP-CONSOLE.md`](docs/GCP-CONSOLE.md) |
+| Infraestrutura em nuvem (GCP) | 4 VMs, uma por serviço, + Cloud SQL — veja [`docs/GCP-CONSOLE.md`](docs/GCP-CONSOLE.md) |
 | Código-fonte no GitHub | este repositório |
 
 O enunciado pede **um** repositório contendo os arquivos `.proto` e o código dos
@@ -492,8 +528,9 @@ web/                     frontend React
   src/features/          uma pasta por tela: auth, dashboard, expenses,
                          cards, assistant, lab
 
-infra/                   setup_gcp.sh, deploy.sh, os startup scripts do console,
-                         nginx.conf, cloud-sql.sql e as units do systemd
+infra/                   setup_gcp.sh, deploy.sh, um startup script por VM
+                         (cards, expenses, server, client), nginx.conf,
+                         cloud-sql.sql e as units do systemd
 docs/                    GCP-CONSOLE.md e APRESENTACAO.md
 ```
 

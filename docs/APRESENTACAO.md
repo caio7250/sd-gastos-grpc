@@ -9,8 +9,9 @@ pergunta ou para um erro de digitação.
 - [ ] `http://<IP-da-vm-client>` aberto e logado numa aba
 - [ ] Cloud SQL Studio aberto em outra aba, com a consulta já digitada:
       `SELECT id, product, amount, card, category, date FROM expenses ORDER BY id DESC;`
-- [ ] SSH da vm-server aberto numa terceira, rodando
-      `sudo journalctl -u gateway -u cards -u expenses -f`
+- [ ] **Três** abas de SSH abertas, uma por VM de backend, cada uma rodando o
+      log do seu serviço: `journalctl -u gateway -f` na vm-server,
+      `-u expenses -f` na vm-expenses, `-u cards -f` na vm-cards
 - [ ] Alguns gastos já cadastrados, para o painel não aparecer vazio
 - [ ] Um cartão que **não** existe em mente (ex.: "Bradesco"), para o caso de erro
 
@@ -20,13 +21,14 @@ pergunta ou para um erro de digitação.
 
 Mostre a **tela de login** — o painel da esquerda já desenha os quatro saltos.
 
-> "Controle de gastos pessoais. São quatro processos separados: o frontend que
-> vocês estão vendo, um API Gateway em FastAPI, e dois microsserviços gRPC — um
-> dono dos cartões, outro dos gastos — falando com um PostgreSQL no Cloud SQL.
+> "Controle de gastos pessoais. São quatro serviços, **cada um na sua própria
+> VM no GCP**: o frontend que vocês estão vendo, um API Gateway em FastAPI, e
+> dois microsserviços gRPC — um dono dos cartões, outro dos gastos — falando
+> com um PostgreSQL no Cloud SQL.
 >
-> O frontend só conhece o Gateway. Os microsserviços escutam em 127.0.0.1: nem
-> com a regra de firewall aberta alguém de fora da VM chega neles. A única
-> porta do sistema aberta para a internet é a 80 desta máquina aqui."
+> O frontend só conhece o Gateway. Os microsserviços só aceitam conexão do
+> Gateway e um do outro, por um par de regras de firewall. A única porta do
+> sistema aberta para a internet é a 80 desta máquina aqui."
 
 Faça o login. **Não explique JWT ainda** — o Laboratório faz isso melhor,
 mostrando o 401.
@@ -46,9 +48,21 @@ Vá para a aba do **Cloud SQL Studio** e rode a consulta.
 > PostgreSQL, que o microsserviço de Gastos gravou depois de perguntar ao de
 > Cartões, por gRPC, se aquele cartão existia."
 
-Se der tempo, mostre o `journalctl`: as linhas `RegisterExpense JSON ->
-protobuf N bytes`, `RegisterExpense from ipv6:...`, `ValidateCard from ...`.
-São três linhas que provam os três saltos.
+Agora o momento mais forte da demonstração: aponte as **três abas de SSH**.
+
+> "Esta é a mesma requisição, nas três máquinas. O Gateway gerou este
+> identificador quando recebeu o POST, mandou junto na chamada gRPC para o
+> serviço de Gastos, e o de Gastos repassou para o de Cartões. Três VMs, três
+> logs, o mesmo id."
+
+```
+vm-server    [45b51b84] RegisterExpense  JSON -> protobuf 40 bytes
+vm-expenses  [45b51b84] RegisterExpense  from 10.128.0.2  teclado 389.90 Nubank/credit
+vm-cards     [45b51b84] ValidateCard     from 10.128.0.5  Nubank / credit
+```
+
+Se perguntarem de onde vem o id, ele também volta no cabeçalho
+`X-Request-Id` da resposta — dá para mostrar na aba Diagnóstico.
 
 ## 3:00 — 4:00 · Alteração e remoção
 
@@ -145,7 +159,25 @@ ponto único de entrada, com autenticação e validação na borda.
 
 **"Onde está a comunicação entre microsserviços?"**
 `server/expenses_service.py`, método `_validate_card`: o serviço de Gastos abre
-um canal gRPC para o de Cartões antes de gravar ou de alterar.
+um canal gRPC para o de Cartões antes de gravar ou de alterar — e, na nuvem,
+isso atravessa a rede entre duas VMs. O log das duas mostra o mesmo id.
+
+**"Vocês usam deadline nas chamadas gRPC?"**
+Sim, em todas. Elas passam pela mesma função `call()` no Gateway, que fixa 10
+segundos; a chamada entre microsserviços usa 5. Sem prazo, um serviço lento
+prenderia o Gateway junto com ele.
+
+**"E retry?"**
+Não fazemos retry de chamada gRPC. `RegisterExpense` não é idempotente — um
+reenvio criaria um gasto duplicado, porque não temos `request_id` de
+operação. Para habilitar retry com segurança, o caminho seria uma chave de
+idempotência no `RegisterExpenseRequest`.
+
+**"Como vocês evoluem o contrato?"**
+Só adicionando. `UpdateExpense` e `DeleteExpense` entraram como mensagens
+novas, com numeração própria; nenhum número existente foi reaproveitado ou
+reutilizado. Os stubs não são versionados — `generate_stubs.sh` os recria —,
+então não existe stub dessincronizado do `.proto`.
 
 **"E se a API da Anthropic estiver fora do ar?"**
 O Gateway cai num interpretador por regras (`language/nlu.py`,

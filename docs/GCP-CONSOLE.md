@@ -3,28 +3,41 @@
 Passo a passo pelo console, sem `gcloud` na sua máquina. Quem prefere linha de
 comando tem `infra/setup_gcp.sh` e `infra/deploy.sh`, que fazem o mesmo.
 
-O alvo é esta topologia:
+O alvo é esta topologia — **cada serviço na sua própria VM**:
 
 ```
-   navegador                    vm-client                         vm-server
-  (sua máquina)          nginx  :80  (pública)              Gateway :8000 (VPC)
-        │  HTTP                 │                                  │
-        └──────────────────────►│  /        -> React (build)        │
-                                │  /api/*   -> ────────────────────►│  valida, JWT,
-                                                                    │  JSON -> protobuf
-                                                                    │     │        │
-                                                          gRPC 127.0.0.1  │        │
-                                                              Cartões :50052  Gastos :50051
-                                                                    │        │
-                                                                    └────┬───┘
-                                                                         ▼
-                                                              Cloud SQL PostgreSQL
-                                                                (só IP privado)
+   navegador                vm-client                      vm-server
+  (sua máquina)        nginx :80 (pública)            API Gateway :8000
+        │  HTTP                 │                             │
+        └──────────────────────►│  /      -> React (build)    │
+                                │  /api/* ────────────────────►  JWT · valida
+                                                              │  JSON -> protobuf
+                                                    ┌─────────┴─────────┐
+                                               gRPC │                   │ gRPC
+                                                    ▼                   ▼
+                                              vm-cards             vm-expenses
+                                          Cartões :50052  ◄──gRPC── Gastos :50051
+                                                    │   ValidateCard    │
+                                                    └─────────┬─────────┘
+                                                              ▼
+                                                   Cloud SQL PostgreSQL
+                                                     (só IP privado)
 ```
 
-Uma porta aberta para a internet no sistema inteiro: a 80 da vm-client. O
-Gateway só atende de dentro da VPC, os microsserviços só de dentro da própria
-vm-server, e o banco não tem endereço público.
+| VM | Tag de rede | IP externo | O que roda |
+|---|---|---|---|
+| `vm-client` | `grpc-client` | **sim** | nginx :80 — frontend e proxy de `/api` |
+| `vm-server` | `grpc-server` | não | API Gateway :8000 |
+| `vm-cards` | `grpc-service` | não | microsserviço de Cartões :50052 |
+| `vm-expenses` | `grpc-service` | não | microsserviço de Gastos :50051 |
+
+Uma porta aberta para a internet no sistema inteiro: a 80 da `vm-client`. O
+Gateway só atende de dentro da VPC, os microsserviços só atendem ao Gateway e
+um ao outro, e o banco não tem endereço público.
+
+**A ordem de criação importa.** Cada VM precisa do IP interno da anterior:
+Cartões não depende de ninguém, Gastos precisa de Cartões, o Gateway precisa
+dos dois, e a vm-client precisa do Gateway.
 
 ---
 
@@ -79,65 +92,102 @@ o usuário do banco não tiver permissão de DDL, rode `infra/cloud-sql.sql` pel
 
 ## 4. Regras de firewall
 
-**Rede VPC → Firewall → Criar regra de firewall.** Duas regras:
+**Rede VPC → Firewall → Criar regra de firewall.** Quatro regras. As duas
+primeiras já existiam; as duas últimas são o que substitui o `127.0.0.1` agora
+que os microsserviços têm VMs próprias.
 
-**`allow-gateway-internal`** — o Gateway, só de dentro da VPC
+| Nome | Prioridade | Ação | Destinos (tag) | Origem | Portas |
+|---|---|---|---|---|---|
+| `allow-web-external` | 1000 | Permitir | `grpc-client` | `0.0.0.0/0` | `tcp:80` |
+| `allow-gateway-internal` | 1000 | Permitir | `grpc-server` | `10.128.0.0/9` | `tcp:8000` |
+| `allow-grpc-internal` | **800** | Permitir | `grpc-service` | **tags** `grpc-server`, `grpc-service` | `tcp:50051,50052` |
+| `deny-grpc-external` | **900** | **Negar** | `grpc-service` | `0.0.0.0/0` | `tcp:50051,50052` |
+
+> No formulário, "Origem" tem duas abas: **Intervalos IPv4** e **Tags de
+> origem**. As duas últimas regras usam *tags de origem*, não intervalo — é o
+> que amarra o acesso às VMs certas em vez de a uma faixa de IP.
+
+**Por que a prioridade importa.** No GCP, número menor é avaliado primeiro. O
+par 800/900 significa: o Gateway e os microsserviços entram, todo o resto é
+negado. Sem o `deny`, a regra `default-allow-internal` — que o GCP cria
+sozinho em toda VPC com prioridade 65534 e libera **todas** as portas entre
+VMs — deixaria a `vm-client` alcançar os microsserviços direto, e o requisito
+de o frontend falar só com o Gateway cairia por terra.
+
+Enquanto os três processos dividiam a `vm-server`, quem garantia isso era o
+`127.0.0.1`. Com as VMs separadas, quem garante é este par de regras.
+
+## 5. vm-cards e vm-expenses (os microsserviços)
+
+**Compute Engine → Instâncias de VM → Criar instância**, duas vezes. As duas
+são iguais menos pelo nome e pelo script:
 
 | Campo | Valor |
 |---|---|
-| Destinos | Tags de destino especificadas → `grpc-server` |
-| Filtro de origem | Intervalos IPv4 → `10.128.0.0/9` |
-| Protocolos e portas | TCP → `8000` |
+| Nome | `vm-cards`, depois `vm-expenses` |
+| Região / zona | `southamerica-east1` / `southamerica-east1-a` |
+| Tipo de máquina | `e2-small` |
+| Disco de inicialização | Debian 12 |
+| Rede → Tags de rede | `grpc-service` |
+| Rede → Endereço IPv4 externo | **Nenhum** |
 
-**`allow-web-external`** — a interface web, para o navegador da apresentação
+**Primeiro a `vm-cards`.** Em *Gerenciamento → Automação → Script de
+inicialização*, cole [`infra/startup-cards.sh`](../infra/startup-cards.sh)
+com o bloco de configuração preenchido (IP privado do Cloud SQL e senha do
+banco). Quando subir, **anote o IP interno** — as outras duas VMs precisam
+dele.
 
-| Campo | Valor |
-|---|---|
-| Destinos | Tags de destino especificadas → `grpc-client` |
-| Filtro de origem | Intervalos IPv4 → `0.0.0.0/0` |
-| Protocolos e portas | TCP → `80` |
+```bash
+sudo systemctl is-active cards     # active
+sudo journalctl -u cards -f
+```
 
-> `10.128.0.0/9` cobre as sub-redes automáticas da VPC `default` em todas as
-> regiões. A regra do Gateway existe para dizer "só de dentro"; o que garante
-> que o cliente não fale direto com o gRPC é o `--host 127.0.0.1` dos
-> microsserviços, não o firewall — a regra `default-allow-internal` do GCP
-> libera todas as portas entre VMs da mesma VPC.
+**Depois a `vm-expenses`**, com [`infra/startup-expenses.sh`](../infra/startup-expenses.sh).
+Aqui o `CARDS_ADDR` recebe o IP interno da `vm-cards` com a porta — por
+exemplo `10.128.0.4:50052`. Sem isso nenhum gasto é gravado: o serviço recusa
+em vez de gravar sem conferir o cartão. Anote o IP interno desta também.
 
-## 5. vm-server (Gateway + microsserviços)
+> Confira que uma alcança a outra, pelo SSH da `vm-expenses`:
+> `nc -vz <ip-da-vm-cards> 50052`
 
-**Compute Engine → Instâncias de VM → Criar instância**
+## 6. vm-server (o API Gateway)
+
+**Criar instância** de novo:
 
 | Campo | Valor |
 |---|---|
 | Nome | `vm-server` |
-| Região / zona | `southamerica-east1` / `southamerica-east1-a` |
+| Zona | a mesma das outras |
 | Tipo de máquina | `e2-small` |
 | Disco de inicialização | Debian 12 |
 | Rede → Tags de rede | `grpc-server` |
-| Rede → Endereço IPv4 externo | **Nenhum** (ela não precisa sair para a internet) |
+| Rede → Endereço IPv4 externo | **Nenhum** |
 
-Em **Gerenciamento → Automação → Script de inicialização**, cole o conteúdo de
-[`infra/startup-server.sh`](../infra/startup-server.sh) **depois de preencher o
-bloco de CONFIGURAÇÃO no topo dele**: IP privado do Cloud SQL, senha do banco,
-`JWT_SECRET`, o login do Gateway e, se for usar, a chave da Anthropic.
+Cole [`infra/startup-server.sh`](../infra/startup-server.sh) com o
+`CARDS_ADDR` e o `EXPENSES_ADDR` apontando para os IPs internos que você
+anotou, mais o `JWT_SECRET`, o login do Gateway e, se for usar, a chave da
+Anthropic.
+
+> Esta VM **não** recebe as credenciais do banco. Quem toca o PostgreSQL são
+> os microsserviços; o Gateway só fala gRPC com eles.
 
 > Se você deixar `ANTHROPIC_API_KEY` em branco, tudo funciona: a interpretação
 > em linguagem natural cai no interpretador por regras, que cobre os comandos
 > do roteiro de demonstração.
 
-Depois que a VM subir, anote o **IP interno** dela (ex.: `10.128.0.2`) e
-confira pelo **SSH no navegador**:
+Anote o **IP interno** e confira pelo SSH do navegador:
 
 ```bash
-sudo systemctl is-active cards expenses gateway   # três "active"
-curl -s localhost:8000/health                     # {"status":"ok"}
-sudo journalctl -u gateway -u cards -u expenses -f
+sudo systemctl is-active gateway   # active
+curl -s localhost:8000/health      # {"status":"ok"}
+sudo journalctl -u gateway -f
 ```
 
-Se algum serviço não subir, o motivo está no `journalctl`. O mais comum é a
-senha do banco errada ou o IP privado trocado.
+Se o Gateway subir mas toda chamada der 503, ele não está alcançando os
+microsserviços: confira os endereços no `server.env` e a regra
+`allow-grpc-internal`.
 
-## 6. vm-client (interface web)
+## 7. vm-client (interface web)
 
 **Criar instância** de novo:
 
@@ -164,17 +214,15 @@ sudo journalctl -u google-startup-scripts -f
 Quando terminar, abra `http://<IP-EXTERNO-DA-VM-CLIENT>` no navegador e entre
 com o `GATEWAY_USER` e a `GATEWAY_PASSWORD` que você definiu no passo 5.
 
-## 7. Conferindo ponta a ponta
+## 8. Conferindo ponta a ponta
 
 Na interface:
 
-1. **Cartões** → cadastre `Nubank` no crédito. O toast diz **201 Created**.
-   Cadastre de novo: **200 OK**, porque já existia.
+1. **Cartões** → cadastre `Nubank` no crédito. O toast diz que foi criado.
+   Cadastre de novo: ele avisa que já existia, porque não houve criação.
 2. **Gastos → Novo gasto** → registre um lançamento.
-3. **Laboratório → Rodar todos** → os doze cenários devem fechar em verde:
-   três de 401, seis de 400 e três do caminho feliz. O de cadastrar cartão
-   aceita 201 e 200 de propósito — 201 na primeira vez, 200 quando o cartão já
-   existe, que é exatamente a diferença que a rota faz.
+3. **Diagnóstico → Verificar tudo** → as doze verificações devem fechar em
+   verde: três de acesso, seis de validação e três de operação.
 4. No **Cloud SQL Studio** (SQL → sua instância → Cloud SQL Studio), rode:
 
 ```sql
@@ -185,27 +233,67 @@ SELECT * FROM cards;
 As linhas que você acabou de criar pela tela estão ali. É a prova de
 persistência real que o enunciado pede.
 
-## 8. Atualizando depois de mexer no código
+### A requisição atravessando as três VMs
+
+Abra três abas de SSH, uma por VM, e deixe rodando:
+
+```bash
+# vm-server
+sudo journalctl -u gateway -f
+# vm-expenses
+sudo journalctl -u expenses -f
+# vm-cards
+sudo journalctl -u cards -f
+```
+
+Agora registre um gasto pela tela. O mesmo identificador aparece nas três:
+
+```
+vm-server    [45b51b84] RegisterExpense  JSON -> protobuf 40 bytes
+vm-expenses  [45b51b84] RegisterExpense  from 10.128.0.2:58568  teclado 389.90 Nubank/credit
+vm-cards     [45b51b84] ValidateCard     from 10.128.0.5:54026  Nubank / credit
+```
+
+O Gateway gera esse id a cada requisição HTTP e o envia na metadata de cada
+chamada gRPC; o serviço de Gastos o repassa ao de Cartões. É o que permite
+seguir uma operação pelo sistema inteiro mesmo com várias pessoas usando ao
+mesmo tempo — e, na apresentação, é a demonstração mais direta de que as três
+máquinas estão de fato conversando.
+
+O id também volta ao navegador, no cabeçalho `X-Request-Id` da resposta.
+
+## 9. Atualizando depois de mexer no código
 
 Pelo SSH da VM correspondente:
 
 ```bash
+# vm-cards e vm-expenses
+cd /opt/sd-gastos-grpc && sudo git pull
+sudo .venv/bin/pip install -q -r server/requirements.txt
+sudo PATH=/opt/sd-gastos-grpc/.venv/bin:$PATH bash generate_stubs.sh
+sudo systemctl restart cards        # ou: expenses
+
 # vm-server
 cd /opt/sd-gastos-grpc && sudo git pull
 sudo .venv/bin/pip install -q -r server/requirements.txt -r gateway/requirements.txt
 sudo PATH=/opt/sd-gastos-grpc/.venv/bin:$PATH bash generate_stubs.sh
-sudo systemctl restart cards expenses gateway
+sudo systemctl restart gateway
 
 # vm-client
 cd /opt/sd-gastos-grpc && sudo git pull
 cd web && npm ci && npm run build && sudo systemctl reload nginx
 ```
 
-## 9. Depois da apresentação
+> Mexeu no `.proto`? Então **as três** VMs de backend precisam do
+> `generate_stubs.sh` e do restart. Stub velho de um lado e novo do outro é o
+> erro mais chato de diagnosticar, porque o sintoma é um campo chegando vazio
+> sem nenhum erro.
+
+## 10. Depois da apresentação
 
 Para não queimar crédito: **Compute Engine → Instâncias de VM → Parar** as
-duas, e **SQL → Parar** a instância do banco. Parar preserva os dados; excluir,
-não.
+quatro, e **SQL → Parar** a instância do banco. Parar preserva os dados;
+excluir, não.
 
 ---
 
@@ -213,9 +301,17 @@ não.
 
 | Sintoma | Onde olhar |
 |---|---|
-| A página não abre | A vm-client tem IP externo? A regra `allow-web-external` existe e a VM tem a tag `grpc-client`? |
-| A página abre mas o login dá "Gateway não respondeu" | `GATEWAY_HOST` no nginx aponta para o IP **interno** certo? Na vm-client: `curl http://<ip-interno>:8000/health` |
-| Login devolve 401 com a senha certa | `GATEWAY_USER`/`GATEWAY_PASSWORD` no `server.env` da vm-server. `sudo systemctl restart gateway` depois de mudar |
-| Tudo 500 ou 503 | `sudo journalctl -u gateway -u cards -u expenses -n 100` — quase sempre é conexão com o banco |
-| Sem IP externo na vm-client | Túnel SSH: `gcloud compute ssh vm-client --zone=... -- -L 8080:localhost:80` e abra `http://localhost:8080` |
-| Nada da nuvem funciona | Plano B: `docker compose up --build` na sua máquina e abra `http://localhost:8080` — mesma arquitetura, PostgreSQL de verdade |
+| A página não abre | A `vm-client` tem IP externo? A regra `allow-web-external` existe e a VM tem a tag `grpc-client`? |
+| A página abre, mas o login diz que não conectou | O `GATEWAY_HOST` do nginx aponta para o IP **interno** da `vm-server`? Na `vm-client`: `curl http://<ip>:8000/health` |
+| Login devolve 401 com a senha certa | `GATEWAY_USER`/`GATEWAY_PASSWORD` no `server.env` da `vm-server`; `sudo systemctl restart gateway` depois de mudar |
+| **Tudo devolve 503** | O Gateway não alcança os microsserviços. Confira `CARDS_ADDR` e `EXPENSES_ADDR` no `server.env`, e a regra `allow-grpc-internal`. Da `vm-server`: `nc -vz <ip-vm-cards> 50052` |
+| Gasto recusado dizendo que o serviço de Cartões não respondeu | A `vm-expenses` não alcança a `vm-cards`. O `CARDS_ADDR` dela está certo? A tag `grpc-service` está nas duas? |
+| Um serviço não sobe | `sudo journalctl -u <serviço> -n 100` — quase sempre é senha do banco errada ou IP privado trocado |
+| Os logs não mostram o mesmo id | Normal se você mexeu só numa VM: as três precisam estar com o mesmo commit |
+| Sem IP externo na `vm-client` | Túnel: `gcloud compute ssh vm-client --zone=... -- -L 8080:localhost:80`, e abra `http://localhost:8080` |
+| **Nada da nuvem funciona** | Plano B: `docker compose up --build` na sua máquina e abra `http://localhost:8080`. Mesma arquitetura, cada serviço no seu host, PostgreSQL de verdade |
+
+> **A ordem de subida, se precisar reiniciar tudo:** `vm-cards`,
+> `vm-expenses`, `vm-server`, `vm-client`. O Gateway tolera os
+> microsserviços subirem depois dele — o canal gRPC reconecta sozinho —, mas
+> começar pela ordem certa poupa um minuto de 503 na tela.
