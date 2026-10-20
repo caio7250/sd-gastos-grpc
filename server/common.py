@@ -9,6 +9,12 @@ import grpc
 
 import expenses_pb2
 
+# O Gateway gera um identificador por requisição HTTP e o envia na metadata de
+# toda chamada gRPC. Os serviços o repetem no log, e o de Gastos o repassa ao
+# de Cartões — assim as três linhas de uma mesma operação ficam amarradas,
+# mesmo com várias pessoas usando o sistema ao mesmo tempo.
+REQUEST_ID_KEY = "x-request-id"
+
 METHOD_LABEL = {
     expenses_pb2.METHOD_UNSPECIFIED: "any",
     expenses_pb2.CREDIT: "credit",
@@ -18,9 +24,27 @@ METHOD_LABEL = {
 log = logging.getLogger("service")
 
 
+def request_id(context):
+    """O identificador que veio do Gateway, ou "-" se a chamada não trouxe um."""
+    for key, value in context.invocation_metadata():
+        if key == REQUEST_ID_KEY:
+            return value
+    return "-"
+
+
+def forward_metadata(context):
+    """A metadata a repassar numa chamada a outro microsserviço.
+
+    Sem isto, a pergunta que Gastos faz a Cartões apareceria no log sem
+    identificador, e o rastro se perderia justamente no salto entre serviços.
+    """
+    return ((REQUEST_ID_KEY, request_id(context)),)
+
+
 def log_rpc(context, method, detail):
     """O log que prova a comunicação durante a apresentação."""
-    log.info("%-16s from %-24s %s", method, context.peer(), detail)
+    log.info("[%s] %-16s from %-24s %s",
+             request_id(context), method, context.peer(), detail)
 
 
 def serve(name, create_server, default_port, default_database):

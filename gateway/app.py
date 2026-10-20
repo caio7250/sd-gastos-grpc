@@ -21,6 +21,7 @@ com o Gateway, nunca com eles. Documentação interativa em /docs.
     uvicorn app:app --host 0.0.0.0 --port 8000
 """
 
+import contextvars
 import datetime
 import functools
 import hmac
@@ -33,7 +34,7 @@ from typing import Annotated, Literal, Optional, get_args
 
 import grpc
 import jwt
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -115,6 +116,53 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Rastreio da requisição
+#
+# Uma requisição HTTP vira várias chamadas gRPC — um POST /expenses aciona
+# RegisterExpense, que por sua vez aciona ValidateCard. Sem um identificador
+# comum, o log mostra as três linhas em sequência e quem lê precisa supor que
+# pertencem à mesma operação; com duas pessoas usando o sistema ao mesmo
+# tempo, essa suposição deixa de valer.
+#
+# O id nasce aqui, viaja na metadata de cada chamada gRPC e volta ao cliente
+# no cabeçalho X-Request-Id. O contextvar é o que permite a função call() lê-lo
+# sem que toda rota precise recebê-lo como parâmetro.
+# ---------------------------------------------------------------------------
+
+REQUEST_ID_KEY = "x-request-id"
+_request_id = contextvars.ContextVar("request_id", default="-")
+
+
+def _clean_id(value):
+    """Aceita um id vindo de fora, mas só se for curto e alfanumérico.
+
+    O valor vai parar no log e na metadata gRPC; aceitá-lo cru deixaria quem
+    chama escolher o que escrever no nosso log.
+    """
+    if not value:
+        return None
+    safe = "".join(c for c in value if c.isalnum() or c in "-_")[:32]
+    return safe or None
+
+
+@app.middleware("http")
+async def tag_request(request: Request, call_next):
+    """Dá um identificador curto a cada requisição e o devolve na resposta.
+
+    Um id vindo de fora é respeitado — assim um proxy, um teste ou a própria
+    interface podem escolher o seu, e o rastro atravessa a borda inteira.
+    """
+    rid = _clean_id(request.headers.get(REQUEST_ID_KEY)) or secrets.token_hex(4)
+    token = _request_id.set(rid)
+    try:
+        response = await call_next(request)
+    finally:
+        _request_id.reset(token)
+    response.headers[REQUEST_ID_KEY] = rid
+    return response
 
 
 @app.exception_handler(RequestValidationError)
@@ -202,10 +250,15 @@ def expenses():
 
 
 def call(name, rpc, request, stream=False):
-    """Serializa em protobuf, chama o microsserviço e traduz erros para HTTP."""
-    log.info("%-16s JSON -> protobuf %d bytes", name, request.ByteSize())
+    """Serializa em protobuf, chama o microsserviço e traduz erros para HTTP.
+
+    O prazo de 10 segundos vale para toda chamada: sem deadline, um serviço
+    lento prenderia o Gateway junto com ele.
+    """
+    rid = _request_id.get()
+    log.info("[%s] %-16s JSON -> protobuf %d bytes", rid, name, request.ByteSize())
     try:
-        result = rpc(request, timeout=10)
+        result = rpc(request, timeout=10, metadata=((REQUEST_ID_KEY, rid),))
         return list(result) if stream else result
     except grpc.RpcError as error:
         raise HTTPException(_HTTP_STATUS.get(error.code(), 502),
@@ -368,7 +421,7 @@ def _interpret(text, cards_list):
         try:
             return nlu.interpret(text, cards_list, today), "claude", None
         except Exception as error:      # noqa: BLE001 - qualquer falha cai no offline
-            log.warning("nlu: %s", nlu.explain(error))
+            log.warning("[%s] nlu: %s", _request_id.get(), nlu.explain(error))
             return (nlu.interpret_offline(text, cards_list, today), "offline",
                     nlu.explain(error))
     return nlu.interpret_offline(text, cards_list, today), "offline", "no API key"
@@ -485,7 +538,7 @@ def interpret_command(body: CommandIn):
     command, interpreter, fallback = _interpret(body.text, registered)
     action = command.get("action", "unknown")
     args = command.get("args") or {}
-    log.info("%-16s %-18s %r", "NLU", action, body.text)
+    log.info("[%s] %-16s %-18s %r", _request_id.get(), "NLU", action, body.text)
 
     if action == "register_card":
         outcome = _do_register_card(args)

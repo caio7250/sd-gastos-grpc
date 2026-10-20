@@ -13,7 +13,7 @@ import grpc
 
 import expenses_pb2
 import expenses_pb2_grpc
-from common import METHOD_LABEL, log_rpc, new_server, serve
+from common import METHOD_LABEL, forward_metadata, log_rpc, new_server, serve
 from database import ExpenseStore, today
 
 DEFAULT_PORT = 50051
@@ -70,6 +70,9 @@ class ExpenseService(expenses_pb2_grpc.ExpenseServiceServicer):
             return self._cards.ValidateCard(
                 expenses_pb2.ValidateCardRequest(name=card.strip(), method=method),
                 timeout=5,
+                # O identificador da requisição segue adiante: no log, a
+                # pergunta a Cartões carrega o mesmo id do gasto que a motivou.
+                metadata=forward_metadata(context),
             )
         except grpc.RpcError as error:
             context.abort(grpc.StatusCode.UNAVAILABLE,
