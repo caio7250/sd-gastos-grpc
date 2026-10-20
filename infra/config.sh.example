@@ -1,6 +1,6 @@
 # Copie para infra/config.sh e ajuste. O config.sh fica fora do git.
 PROJECT="paste-your-project-id-here"
-ZONE="southamerica-east1-a"      # São Paulo: menor latência na demo ao vivo
+ZONE="us-central1-a"             # a mesma região do Cloud SQL do projeto
 MACHINE_TYPE="e2-small"
 REPO_URL="https://github.com/murilorrs/sd-gastos-grpc.git"
 

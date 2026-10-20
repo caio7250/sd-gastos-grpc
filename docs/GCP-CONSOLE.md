@@ -49,8 +49,19 @@ dos dois, e a vm-client precisa do Gateway.
    - **Compute Engine API**
    - **Cloud SQL Admin API**
    - **Service Networking API** (o IP privado do Cloud SQL depende dela)
-3. **Faturamento** precisa estar vinculado ao projeto. Sem isso o Compute
-   Engine não cria VM.
+3. **Faturamento precisa estar ATIVO no projeto**, não só vinculado. São
+   coisas diferentes: o projeto pode ter uma conta de faturamento associada e
+   ainda assim estar com a cobrança desativada — foi o caso do `SD 2026`.
+   Confira em **Faturamento** no menu lateral; se disser que o faturamento
+   está desativado, reative. Enquanto não estiver ativo, toda chamada ao
+   Compute Engine falha com *"This API method requires billing to be
+   enabled"*, e nenhuma VM é criada.
+
+   Para conferir pelo terminal:
+
+   ```bash
+   gcloud billing projects describe <PROJECT_ID>   # billingEnabled: true
+   ```
 
 ## 2. Rede privada para o banco
 
@@ -68,27 +79,53 @@ privado a serviços. Configure uma vez:
 
 ## 3. Cloud SQL (PostgreSQL)
 
+### Se o projeto já tem a instância do Trabalho 1
+
+É o caso do projeto `SD 2026`, que já tem a `banco-aula-sd`. Então não crie
+outra — só faltam três ajustes:
+
+1. **SQL → banco-aula-sd → Iniciar.** Ela fica parada entre as aulas
+   (`activationPolicy: NEVER`), e parada não aceita conexão. Ligar leva uns
+   dois minutos.
+2. **Editar → Conexões → marque IP particular**, rede `default`. O console
+   oferece alocar o intervalo e criar o peering ali mesmo; aceite. Isto é
+   obrigatório: as VMs dos microsserviços **não têm IP externo**, então só
+   alcançam o banco pela rede privada. Pode deixar o IP público ligado — ele
+   não atrapalha, e o Cloud SQL Studio continua funcionando.
+3. **Anote o IP particular** que aparece em *Visão geral → Conectar-se a esta
+   instância*. É ele que vai no `PGHOST` dos dois scripts.
+
+> O IP público com *redes autorizadas* — como está hoje, liberando o
+> `34.31.110.75` da antiga `vm-aula` — não serve mais: aquela VM não existe, e
+> as novas não terão endereço público para autorizar. Daí o IP particular.
+
+Confira ainda que existem o banco `expenses` e o usuário `expenses_app`
+(abas **Bancos de dados** e **Usuários**). Se o usuário não existir, crie e
+guarde a senha.
+
+### Se estiver criando do zero
+
 **SQL → Criar instância → PostgreSQL**
 
 | Campo | Valor |
 |---|---|
 | ID da instância | `banco-aula-sd` |
 | Senha do usuário `postgres` | guarde-a |
-| Versão | PostgreSQL 15 ou 16 |
-| Predefinição | **Sandbox** (o mais barato; dá conta com folga) |
-| Região | a mesma das VMs — `southamerica-east1` (São Paulo) |
-| **Conexões** | marque **IP particular**, rede `default`; **desmarque IP público** |
+| Versão | PostgreSQL 15 ou mais novo |
+| Predefinição | **Sandbox** (a mais barata; sobra para este volume) |
+| Região | a mesma das VMs |
+| **Conexões** | marque **IP particular**, rede `default` |
 
-Depois que a instância subir:
+Depois que subir: crie o banco `expenses`, o usuário `expenses_app`, e anote
+o **IP particular**.
 
-1. **Bancos de dados → Criar banco de dados:** `expenses`
-2. **Usuários → Adicionar conta de usuário:** `expenses_app`, com senha própria
-3. **Visão geral → Conectar-se a esta instância:** anote o **IP particular**
-   (algo como `10.115.48.3`)
-
-O esquema das tabelas é criado pelos próprios microsserviços ao iniciarem. Se
-o usuário do banco não tiver permissão de DDL, rode `infra/cloud-sql.sql` pelo
+As tabelas são criadas pelos próprios microsserviços ao iniciarem. Se o
+usuário do banco não tiver permissão de DDL, rode `infra/cloud-sql.sql` pelo
 **Cloud SQL Studio** antes.
+
+> **Atenção ao custo.** A `banco-aula-sd` está num tier `db-custom-2-8192`
+> (2 vCPU, 8 GB) — bem acima do necessário e caro para ficar ligado. Depois da
+> apresentação, **pare a instância**.
 
 ## 4. Regras de firewall
 

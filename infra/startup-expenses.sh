@@ -21,6 +21,9 @@ PGPORT="5432"
 PGDATABASE="expenses"
 PGUSER="expenses_app"
 PGPASSWORD="TROQUE-PELA-SENHA-DO-BANCO"
+# O Cloud SQL recusa conexão sem TLS. "require" criptografa sem exigir
+# certificado de cliente, que é o que a instância espera.
+PGSSLMODE="require"
 # --------------------------------------------------------------------------
 
 echo "==> pacotes"
@@ -52,6 +55,7 @@ PGPORT=$PGPORT
 PGDATABASE=$PGDATABASE
 PGUSER=$PGUSER
 PGPASSWORD=$PGPASSWORD
+PGSSLMODE=$PGSSLMODE
 ENV
 chmod 600 "$TARGET_DIR/server.env"
 
