@@ -21,7 +21,7 @@ remoto() { gcloud compute ssh "$1" --zone="$ZONE" --quiet --command "$2" 2>/dev/
 echo "projeto $PROJECT, zona $ZONE"
 echo
 echo "== VMs =="
-for vm in vm-cards vm-expenses vm-server vm-client; do
+for vm in vm-db vm-cards vm-expenses vm-server vm-client; do
   estado=$(gcloud compute instances describe "$vm" --zone="$ZONE" \
     --format="value(status)" 2>/dev/null)
   [ "$estado" = "RUNNING" ] && sim "$vm está RUNNING" || nao "$vm está ${estado:-ausente}"
@@ -29,6 +29,8 @@ done
 
 echo
 echo "== serviços =="
+remoto vm-db "sudo docker exec postgres pg_isready -U expenses_app -d expenses" \
+  | grep -q "accepting connections" && sim "postgres aceitando conexão" || nao "postgres fora (docker logs postgres)"
 remoto vm-cards    "systemctl is-active cards"    | grep -qx active && sim "cards no ar"    || nao "cards fora (journalctl -u cards)"
 remoto vm-expenses "systemctl is-active expenses" | grep -qx active && sim "expenses no ar" || nao "expenses fora (journalctl -u expenses)"
 remoto vm-server   "systemctl is-active gateway"  | grep -qx active && sim "gateway no ar"  || nao "gateway fora (journalctl -u gateway)"
@@ -41,6 +43,11 @@ remoto vm-server "curl -s -m 5 localhost:8000/health" | grep -q '"ok"' \
 remoto vm-expenses "timeout 5 bash -c '</dev/tcp/$(gcloud compute instances describe vm-cards --zone=$ZONE --format="value(networkInterfaces[0].networkIP)" 2>/dev/null)/50052' 2>/dev/null && echo alcanca" \
   | grep -q alcanca && sim "expenses alcança cards" || nao "expenses NÃO alcança cards"
 
+DB_IP=$(gcloud compute instances describe vm-db --zone="$ZONE" \
+  --format="value(networkInterfaces[0].networkIP)" 2>/dev/null)
+remoto vm-expenses "timeout 5 bash -c '</dev/tcp/$DB_IP/5432' 2>/dev/null && echo alcanca" \
+  | grep -q alcanca && sim "expenses alcança o banco" || nao "expenses NÃO alcança o banco"
+
 echo
 echo "== isolamento (o que NÃO pode funcionar) =="
 CARDS_IP=$(gcloud compute instances describe vm-cards --zone="$ZONE" \
@@ -49,6 +56,20 @@ if remoto vm-client "timeout 5 bash -c '</dev/tcp/$CARDS_IP/50052' 2>/dev/null &
   nao "a vm-client ALCANÇA o microsserviço — falta a regra deny-grpc-external"
 else
   sim "a vm-client não alcança os microsserviços"
+fi
+if remoto vm-client "timeout 5 bash -c '</dev/tcp/$DB_IP/5432' 2>/dev/null && echo alcanca" | grep -q alcanca; then
+  nao "a vm-client ALCANÇA o banco — falta a regra deny-postgres-external"
+else
+  sim "a vm-client não alcança o banco"
+fi
+
+echo
+echo "== dados =="
+linhas=$(remoto vm-db "sudo docker exec postgres psql -U expenses_app -d expenses -tAc 'SELECT count(*) FROM expenses'" | tr -d ' \r')
+if [ -n "$linhas" ] && [ "$linhas" -gt 0 ] 2>/dev/null; then
+  sim "$linhas gastos no banco"
+else
+  nao "banco vazio — rode: bash infra/semeia.sh"
 fi
 
 echo

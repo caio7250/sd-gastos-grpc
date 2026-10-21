@@ -9,11 +9,20 @@ gcloud auth login
 PROJECT=seu-projeto bash infra/provision_gcp.sh
 ```
 
-Isso cria tudo: APIs, rede privada, Cloud SQL, as quatro regras de firewall e
-as quatro VMs já configuradas, com os IPs de uma injetados na outra. Ao final
-grava `credenciais.txt` com o endereço da interface e as senhas geradas.
+Opcional, se quiser a interpretação em linguagem natural pela Claude em vez
+das regras locais:
 
-Leva de 20 a 30 minutos, a maior parte esperando o Cloud SQL.
+```bash
+PROJECT=seu-projeto ANTHROPIC_API_KEY=sk-... bash infra/provision_gcp.sh
+```
+
+Isso cria tudo: APIs, as seis regras de firewall e as cinco VMs já
+configuradas, com o IP interno de cada uma injetado no script da seguinte —
+incluindo a `vm-db`, que sobe um PostgreSQL em container. No fim ele espera o
+sistema responder, semeia cartões e gastos de demonstração, roda a verificação
+e grava `credenciais.txt` com o endereço da interface e as senhas geradas.
+
+Leva de 10 a 15 minutos. Quando terminar, a interface já abre com dados.
 
 Depois:
 

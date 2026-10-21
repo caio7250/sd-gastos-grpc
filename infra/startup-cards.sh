@@ -13,15 +13,15 @@ set -euo pipefail
 REPO_URL="https://github.com/murilorrs/sd-gastos-grpc.git"
 TARGET_DIR="/opt/sd-gastos-grpc"
 
-# Cloud SQL (PostgreSQL) — o IP PRIVADO da instância.
-PGHOST="10.115.48.3"
+# PostgreSQL: o IP interno da vm-db.
+PGHOST="10.128.0.3"
 PGPORT="5432"
 PGDATABASE="expenses"
 PGUSER="expenses_app"
 PGPASSWORD="TROQUE-PELA-SENHA-DO-BANCO"
-# O Cloud SQL recusa conexão sem TLS. "require" criptografa sem exigir
-# certificado de cliente, que é o que a instância espera.
-PGSSLMODE="require"
+# "prefer" usa TLS quando o servidor oferece e segue sem ele quando não —
+# o container não tem certificado, e o tráfego não sai da VPC.
+PGSSLMODE="prefer"
 
 echo "==> pacotes"
 export DEBIAN_FRONTEND=noninteractive

@@ -4,7 +4,7 @@
 
 Sistema de controle de gastos pessoais: interface web em React, API Gateway em
 FastAPI, dois microsserviços gRPC e PostgreSQL. Cada serviço roda na sua
-própria VM no Google Cloud.
+própria VM no Google Cloud — cinco ao todo, incluindo a do banco.
 
 Trabalhos 1 e 2 de Sistemas Distribuídos.
 
@@ -25,8 +25,8 @@ Trabalhos 1 e 2 de Sistemas Distribuídos.
                                             │ ValidateCard │
                                             └──────┬───────┘
                                                    ▼
-                                       Cloud SQL (PostgreSQL)
-                                          IP privado :5432
+                                                 vm-db
+                                        PostgreSQL (container) :5432
 ```
 
 O frontend só fala com o Gateway. O Gateway autentica, valida e traduz para
@@ -40,10 +40,13 @@ contrato `.proto`. A única porta aberta para a internet é a 80 da `vm-client`.
       tcp:8000   ←  10.128.0.0/9                   →  tag grpc-server
  800  tcp:5005x  ←  tags grpc-server, grpc-service →  tag grpc-service  allow
  900  tcp:5005x  ←  0.0.0.0/0                      →  tag grpc-service  deny
+ 800  tcp:5432   ←  tag grpc-service               →  tag db-server     allow
+ 900  tcp:5432   ←  0.0.0.0/0                      →  tag db-server     deny
 ```
 
-O par 800/900 é o que mantém os microsserviços privados: a regra
+Os pares 800/900 são o que mantém microsserviços e banco privados: a regra
 `default-allow-internal` do GCP tem prioridade 65534 e nunca é alcançada.
+Só os microsserviços falam com o banco — nem o Gateway alcança a porta 5432.
 
 ## API
 
@@ -112,12 +115,13 @@ inicialização" da VM.
 Por linha de comando:
 
 ```bash
-cp infra/config.sh.example infra/config.sh    # edite o PROJECT
-bash infra/setup_gcp.sh                       # VMs e firewall
-bash infra/deploy.sh                          # instala e sobe
+gcloud auth login
+PROJECT=seu-projeto bash infra/provision_gcp.sh   # cria tudo e semeia
+bash infra/verifica.sh                            # confere
 ```
 
-A ordem importa: `vm-cards` → `vm-expenses` → `vm-server` → `vm-client`.
+A ordem importa: `vm-db` → `vm-cards` → `vm-expenses` → `vm-server` →
+`vm-client`. Cada uma precisa do IP interno da anterior.
 
 ## Estrutura
 
@@ -138,7 +142,7 @@ Os stubs gerados não são versionados; `generate_stubs.sh` os recria.
 
 | Variável | Onde | Para quê |
 |---|---|---|
-| `PGHOST` … `PGSSLMODE` | microsserviços | conexão com o PostgreSQL |
+| `PGHOST` … `PGSSLMODE` | microsserviços | conexão com o PostgreSQL da `vm-db` |
 | `CARDS_ADDR`, `EXPENSES_ADDR` | Gateway, Gastos | endereço dos microsserviços |
 | `GRPC_HOST` | microsserviços | interface de escuta |
 | `JWT_SECRET` | Gateway | assinatura dos tokens |
