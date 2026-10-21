@@ -108,17 +108,19 @@ por canais gRPC reais, incluindo o caso em que o serviço de Cartões cai.
 
 ## Deploy
 
-Passo a passo pelo console: [`docs/GCP-CONSOLE.md`](docs/GCP-CONSOLE.md).
-Os scripts em `infra/startup-*.sh` são feitos para colar no campo "Script de
-inicialização" da VM.
-
-Por linha de comando:
+Um script provisiona tudo — VMs, firewall, banco — e semeia os dados de
+demonstração: [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ```bash
 gcloud auth login
 PROJECT=seu-projeto bash infra/provision_gcp.sh   # cria tudo e semeia
-bash infra/verifica.sh                            # confere
+bash infra/verifica.sh                            # 18 checagens
 ```
+
+O caminho manual, clicando no console, está em
+[`docs/GCP-CONSOLE.md`](docs/GCP-CONSOLE.md). Os scripts
+`infra/startup-*.sh` são feitos para colar no campo "Script de inicialização"
+da VM.
 
 A ordem importa: `vm-db` → `vm-cards` → `vm-expenses` → `vm-server` →
 `vm-client`. Cada uma precisa do IP interno da anterior.
@@ -133,7 +135,7 @@ language/                interpretação de linguagem natural
 client/                  cliente de terminal
 web/                     frontend React
 infra/                   scripts de deploy, nginx e units do systemd
-docs/                    guia de deploy e roteiro da apresentação
+docs/                    DEPLOY.md, GCP-CONSOLE.md e APRESENTACAO.md
 ```
 
 Os stubs gerados não são versionados; `generate_stubs.sh` os recria.

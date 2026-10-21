@@ -1,44 +1,16 @@
-# Subindo o sistema
+# Subindo pelo console, clicando
 
-Duas formas: **por script**, que faz quase tudo, ou **pelo console**, clicando.
+Este é o caminho manual. **O recomendado é o script**, documentado em
+[`DEPLOY.md`](DEPLOY.md) — um comando, de 10 a 15 minutos, e a interface sobe
+com dados.
 
-## Por script (recomendado)
+Use este documento se preferir clicar, se quiser entender o que o script faz,
+ou se algum passo dele falhar e você precisar completá-lo à mão.
 
-```bash
-gcloud auth login
-PROJECT=seu-projeto bash infra/provision_gcp.sh
-```
-
-Opcional, se quiser a interpretação em linguagem natural pela Claude em vez
-das regras locais:
-
-```bash
-PROJECT=seu-projeto ANTHROPIC_API_KEY=sk-... bash infra/provision_gcp.sh
-```
-
-Isso cria tudo: APIs, as seis regras de firewall e as cinco VMs já
-configuradas, com o IP interno de cada uma injetado no script da seguinte —
-incluindo a `vm-db`, que sobe um PostgreSQL em container. No fim ele espera o
-sistema responder, semeia cartões e gastos de demonstração, roda a verificação
-e grava `credenciais.txt` com o endereço da interface e as senhas geradas.
-
-Leva de 10 a 15 minutos. Quando terminar, a interface já abre com dados.
-
-Depois:
-
-```bash
-bash infra/verifica.sh
-```
-
-que confere as VMs, os serviços, a conectividade entre eles, o isolamento
-(a vm-client **não** pode alcançar os microsserviços) e o fluxo ponta a ponta.
-
-**O que precisa ser feito na mão, antes:** instalar o `gcloud`, rodar
-`gcloud auth login` e ter uma conta de faturamento ativa. Só isso — o script
-cuida de vincular o faturamento ao projeto, se já houver uma conta aberta.
-
-O resto deste documento é o caminho pelo console, para quem preferir clicar ou
-precisar entender o que o script faz.
+> Uma diferença: este guia descreve o banco como **Cloud SQL**, que era a
+> versão anterior. O script usa **PostgreSQL em container na `vm-db`**, que é
+> a topologia atual. As seções de firewall e de VMs valem para as duas; a de
+> banco, não.
 
 ---
 
