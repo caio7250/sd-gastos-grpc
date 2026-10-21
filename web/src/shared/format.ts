@@ -22,8 +22,6 @@ const METHOD_LABELS: Record<string, string> = {
 export const categoryLabel = (value: string) => CATEGORY_LABELS[value] ?? value
 export const methodLabel = (value: string) => METHOD_LABELS[value] ?? value
 
-/** O rótulo certo para a chave de um agrupamento, que muda com o group_by.
- *  Agrupado por cartão, a chave já é o nome do cartão e não se traduz. */
 export function totalKeyLabel(groupBy: string, key: string): string {
     if (groupBy === 'category') return categoryLabel(key)
     if (groupBy === 'method') return methodLabel(key)

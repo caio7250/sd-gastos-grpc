@@ -36,9 +36,7 @@ services:
   cards:
     build: .
     working_dir: /app/server
-    # 0.0.0.0 aqui não abre nada para fora: quem isola é a rede do compose,
-    # que não publica porta nenhuma deste serviço. Nas VMs, o equivalente é o
-    # firewall — o serviço escuta em 0.0.0.0 lá também.
+
     command: python cards_service.py --host 0.0.0.0
     environment: &db-env
       PGHOST: db

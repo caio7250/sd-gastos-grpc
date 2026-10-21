@@ -63,9 +63,8 @@ install_service() {
 # os dois microsserviços. O Gateway não as recebe — ele não fala com o banco.
 db_env() { grep -E '^PG[A-Z]*=' "$ROOT/.env" 2>/dev/null || true; }
 
-# ---------------------------------------------------------------------------
 echo "==> $VM_CARDS (microsserviço de Cartões)"
-# ---------------------------------------------------------------------------
+
 gcloud compute ssh "$VM_CARDS" --zone="$ZONE" --quiet --command "$(base_script)
 .venv/bin/pip install -q -r server/requirements.txt
 PATH=$TARGET_DIR/.venv/bin:\$PATH bash generate_stubs.sh"
@@ -75,10 +74,9 @@ install_service "$VM_CARDS" cards "$ROOT/.cards.env.tmp"
 CARDS_IP=$(internal_ip "$VM_CARDS")
 echo "    Cartões em $CARDS_IP:50052"
 
-# ---------------------------------------------------------------------------
 echo
 echo "==> $VM_EXPENSES (microsserviço de Gastos)"
-# ---------------------------------------------------------------------------
+
 gcloud compute ssh "$VM_EXPENSES" --zone="$ZONE" --quiet --command "$(base_script)
 .venv/bin/pip install -q -r server/requirements.txt
 PATH=$TARGET_DIR/.venv/bin:\$PATH bash generate_stubs.sh"
@@ -89,10 +87,9 @@ install_service "$VM_EXPENSES" expenses "$ROOT/.expenses.env.tmp"
 EXPENSES_IP=$(internal_ip "$VM_EXPENSES")
 echo "    Gastos em $EXPENSES_IP:50051"
 
-# ---------------------------------------------------------------------------
 echo
 echo "==> $VM_SERVER (API Gateway)"
-# ---------------------------------------------------------------------------
+
 gcloud compute ssh "$VM_SERVER" --zone="$ZONE" --quiet --command "$(base_script)
 .venv/bin/pip install -q -r server/requirements.txt -r gateway/requirements.txt
 PATH=$TARGET_DIR/.venv/bin:\$PATH bash generate_stubs.sh"
@@ -107,10 +104,9 @@ install_service "$VM_SERVER" gateway "$ROOT/.gateway.env.tmp"
 SERVER_IP=$(internal_ip "$VM_SERVER")
 echo "    Gateway em $SERVER_IP:$GATEWAY_PORT"
 
-# ---------------------------------------------------------------------------
 echo
 echo "==> $VM_CLIENT (frontend web)"
-# ---------------------------------------------------------------------------
+
 gcloud compute ssh "$VM_CLIENT" --zone="$ZONE" --quiet --command "$(base_script)
 .venv/bin/pip install -q -r client/requirements.txt
 sudo apt-get install -y -qq nginx curl ca-certificates

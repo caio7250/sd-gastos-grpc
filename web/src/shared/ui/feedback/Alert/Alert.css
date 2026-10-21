@@ -1,7 +1,5 @@
 @import "../../tokens.css";
 
-/* Aviso com régua de 2px à esquerda e fundo lavado. A cor vem da paleta de
-   tokens, não de valores soltos — trocar o status muda um token só. */
 .ui-alert {
     display: flex;
     align-items: flex-start;

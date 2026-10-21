@@ -5,9 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Em que interface escutar vem do server.env que o startup script escreve:
-# 0.0.0.0 quando o serviço tem a VM só para ele, 127.0.0.1 quando divide a
-# máquina com o Gateway.
+
 WorkingDirectory=/opt/sd-gastos-grpc/server
 EnvironmentFile=-/opt/sd-gastos-grpc/server.env
 ExecStart=/opt/sd-gastos-grpc/.venv/bin/python cards_service.py --database /opt/sd-gastos-grpc/data/cards.db

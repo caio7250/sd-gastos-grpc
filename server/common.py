@@ -8,11 +8,6 @@ from concurrent import futures
 import grpc
 
 import expenses_pb2
-
-# O Gateway gera um identificador por requisição HTTP e o envia na metadata de
-# toda chamada gRPC. Os serviços o repetem no log, e o de Gastos o repassa ao
-# de Cartões — assim as três linhas de uma mesma operação ficam amarradas,
-# mesmo com várias pessoas usando o sistema ao mesmo tempo.
 REQUEST_ID_KEY = "x-request-id"
 
 METHOD_LABEL = {
@@ -33,11 +28,7 @@ def request_id(context):
 
 
 def forward_metadata(context):
-    """A metadata a repassar numa chamada a outro microsserviço.
-
-    Sem isto, a pergunta que Gastos faz a Cartões apareceria no log sem
-    identificador, e o rastro se perderia justamente no salto entre serviços.
-    """
+    """A metadata a repassar numa chamada a outro microsserviço."""
     return ((REQUEST_ID_KEY, request_id(context)),)
 
 
@@ -48,16 +39,7 @@ def log_rpc(context, method, detail):
 
 
 def serve(name, create_server, default_port, default_database):
-    """Lê os argumentos, escolhe o banco e mantém o servidor no ar.
-
-    O banco é PostgreSQL quando PGHOST está no ambiente (a VM, falando com o
-    Cloud SQL pelo IP privado) e SQLite caso contrário (desenvolvimento local).
-
-    O host padrão é 127.0.0.1: os serviços gRPC só aceitam conexões da própria
-    máquina, e a única porta de entrada do sistema é o Gateway. Firewall não
-    bastaria para isso — a regra default-allow-internal do GCP libera todas as
-    portas entre VMs da VPC.
-    """
+    """Lê os argumentos, escolhe o banco e mantém o servidor no ar."""
     parser = argparse.ArgumentParser(description="%s - gRPC microservice" % name)
     parser.add_argument("--host", default=os.environ.get("GRPC_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=default_port)

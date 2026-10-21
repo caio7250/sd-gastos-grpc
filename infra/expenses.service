@@ -6,9 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/sd-gastos-grpc/server
-# Credenciais do Cloud SQL (PGHOST, PGUSER, PGPASSWORD...), o endereço do
-# serviço de Cartões (CARDS_ADDR) e a interface de escuta (GRPC_HOST). O "-"
-# torna o arquivo opcional: sem ele, o serviço usa o SQLite do --database.
+
 EnvironmentFile=-/opt/sd-gastos-grpc/server.env
 ExecStart=/opt/sd-gastos-grpc/.venv/bin/python expenses_service.py --database /opt/sd-gastos-grpc/data/expenses.db
 Restart=always

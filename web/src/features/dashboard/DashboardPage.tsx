@@ -13,10 +13,6 @@ import { Spinner } from '@/shared/ui/feedback'
 import { VIZ, colorFor } from './charts'
 import './DashboardPage.css'
 
-/**
- * O painel: os totais do período escolhido, em números e em gráficos, mais os
- * últimos lançamentos. Trocar o período refaz todas as consultas.
- */
 const DashboardPage: React.FC = () => {
     const [period, setPeriod] = useState<QuickPeriod>('this_month')
     const [byCategory, setByCategory] = useState<gateway.Summary | null>(null)

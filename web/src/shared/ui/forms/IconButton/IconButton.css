@@ -10,8 +10,6 @@
 .ui-icon-button--md { width: 34px; height: 34px; }
 .ui-icon-button--lg { width: 42px; height: 42px; }
 
-/* Nem o botão redondo é redondo: a variante existe no componente, e aqui ela
-   recebe o mesmo canto de todo o resto. */
 .ui-icon-button--round {
     border-radius: var(--ui-radius-sm);
 }

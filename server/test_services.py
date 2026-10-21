@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Verificação executável dos dois microsserviços.
-
-Sobe o serviço de Cartões e o de Gastos em portas efêmeras, com bancos em
-memória, e os exercita por canais gRPC de verdade — inclusive a chamada que o
-serviço de Gastos faz ao de Cartões antes de gravar. Testa serialização e
-transporte, não só as funções Python.
-
-    python server/test_services.py
-"""
+"""Testes dos dois microsserviços por canais gRPC reais."""
 
 import grpc
 
@@ -18,11 +10,7 @@ import expenses_service
 
 
 def start_services():
-    """Sobe os dois serviços.
-
-    Devolve (stub de cartões, stub de gastos, parar, servidor de cartões,
-    endereços {"cards": ..., "expenses": ...}).
-    """
+    """Sobe os dois serviços."""
     cards_server, cards_port = cards_service.create_server(":memory:", "localhost:0")
     cards_server.start()
     expenses_server, expenses_port = expenses_service.create_server(

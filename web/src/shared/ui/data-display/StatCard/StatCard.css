@@ -1,8 +1,5 @@
 @import "../../tokens.css";
 
-/* O número é o conteúdo; o resto é legenda. A cor da variante entra como uma
-   régua de 2px no topo — larga o bastante para agrupar, fina o bastante para
-   não competir com o valor. */
 .ui-stat-card {
     display: flex;
     flex-direction: column;

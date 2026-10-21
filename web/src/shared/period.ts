@@ -1,11 +1,3 @@
-/**
- * Atalhos de período para os filtros da tela.
- *
- * O Gateway filtra por start_date e end_date; estes atalhos só poupam o
- * usuário de digitar as duas datas. A resolução que vale para a linguagem
- * natural continua sendo a do servidor (language/period.py) — aqui é conforto
- * de interface, não regra de negócio.
- */
 
 export interface Range {
     start_date?: string

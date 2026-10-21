@@ -32,13 +32,6 @@ const EMPTY: FormState = {
     date: today(), description: '',
 }
 
-/**
- * O formulário de gasto — criação e edição no mesmo lugar, porque o corpo
- * enviado é o mesmo nos dois casos (POST /expenses e PUT /expenses/{id}).
- *
- * A validação daqui é só conforto: quem decide é o servidor, e a mensagem
- * exibida quando ele recusa é a dele.
- */
 const ExpenseModal: React.FC<Props> = ({ open, cards, editing, onClose, onSaved }) => {
     const meta = useMeta()
     const [form, setForm] = useState<FormState>(EMPTY)
@@ -63,8 +56,6 @@ const ExpenseModal: React.FC<Props> = ({ open, cards, editing, onClose, onSaved 
         }
     }, [open, editing])
 
-    // Um cartão é a dupla (nome, método): oferecer um método que o cartão não
-    // tem só serviria para o usuário levar um 400 desnecessário.
     const methodsOfCard = useMemo(() => {
         const found = cards.find((card) => card.name.toLowerCase() === form.card.toLowerCase())
         return found ? found.methods : []
@@ -88,8 +79,7 @@ const ExpenseModal: React.FC<Props> = ({ open, cards, editing, onClose, onSaved 
         const payload: gateway.ExpenseInput = {
             product: form.product.trim(),
             description: form.description.trim(),
-            // Number('') é 0, que o servidor recusa: campo obrigatório em
-            // branco não deve virar um gasto de R$ 0.
+
             amount: Number(form.amount.replace(',', '.')),
             card: form.card.trim(),
             method: form.method as gateway.PaymentMethod,

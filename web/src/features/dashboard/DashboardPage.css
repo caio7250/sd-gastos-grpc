@@ -1,6 +1,3 @@
-/* ---- seletor de período ----------------------------------------------
-   Controle segmentado: um bloco só, dividido por linhas de 1px. Cada opção
-   não é um botão-cápsula solto — o conjunto é que é o controle. */
 
 .period-chips {
     display: flex;

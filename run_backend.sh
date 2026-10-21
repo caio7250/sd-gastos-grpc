@@ -13,10 +13,6 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Só o que o Gateway precisa: segredo do JWT, o usuário de login e, se houver,
-# a chave da LLM — é ele quem interpreta o texto vindo da interface web. (Um
-# laço de read em vez de `source <(...)`: o bash 3.2 do macOS lê vazio nesse
-# caso.)
 if [ -f .env ]; then
   while IFS= read -r line; do
     export "$line"

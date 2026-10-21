@@ -11,18 +11,6 @@ import { Button } from '@/shared/ui/forms'
 import { Alert } from '@/shared/ui/feedback'
 import './DiagnosticsPage.css'
 
-/**
- * Diagnóstico: verificações automáticas da API.
- *
- * Cada botão dispara uma requisição de verdade e compara o status recebido com
- * o esperado. Serve para conferir, em segundos, que a autenticação está
- * barrando quem deve, que a validação está recusando o que deve, e que as
- * operações válidas chegam ao banco.
- *
- * O painel da direita é um registro vivo: além das verificações, toda chamada
- * feita em qualquer tela do sistema aparece nele.
- */
-
 interface Scenario {
     id: string
     group: '401' | '400' | 'sucesso'
@@ -174,8 +162,7 @@ const DiagnosticsPage: React.FC = () => {
         try {
             await scenario.run({ card })
         } catch (failure) {
-            // Um 4xx é o resultado esperado de quase toda verificação daqui: o
-            // erro já foi registrado no histórico, que é de onde o status sai.
+
             if (!(failure instanceof ApiError)) throw failure
         }
         const latest = getExchanges()[0]

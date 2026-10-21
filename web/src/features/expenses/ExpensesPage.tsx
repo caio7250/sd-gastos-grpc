@@ -15,10 +15,6 @@ import './ExpensesPage.css'
 
 const EMPTY_FILTER = { card: '', method: '', category: '', start_date: '', end_date: '' }
 
-/**
- * A tabela de gastos e o ciclo completo de um lançamento: criar, alterar e
- * remover.
- */
 const ExpensesPage: React.FC = () => {
     const meta = useMeta()
     const { toasts, dismiss, success, error: toastError } = useToast()
@@ -32,8 +28,6 @@ const ExpensesPage: React.FC = () => {
     const [removing, setRemoving] = useState<gateway.Expense | null>(null)
     const [deleting, setDeleting] = useState(false)
 
-    // O filtro entra por parâmetro, e não pelas dependências, para o botão
-    // "Filtrar" poder aplicar o estado novo sem esperar o próximo render.
     const load = useCallback(async (applied: typeof EMPTY_FILTER) => {
         setLoading(true)
         try {

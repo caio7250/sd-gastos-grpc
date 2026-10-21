@@ -15,7 +15,6 @@ TARGET_DIR="/opt/sd-gastos-grpc"
 # IP INTERNO da vm-server (a coluna "IP interno" em Compute Engine -> Instâncias
 # de VM). Interno, não externo: as duas VMs conversam dentro da VPC.
 GATEWAY_HOST="10.128.0.2"
-# --------------------------------------------------------------------------
 
 echo "==> pacotes"
 export DEBIAN_FRONTEND=noninteractive

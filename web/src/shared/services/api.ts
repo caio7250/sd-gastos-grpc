@@ -1,15 +1,3 @@
-/**
- * A única porta de saída do frontend.
- *
- * Todo pedido sai daqui para o API Gateway — o frontend não conhece, e não
- * consegue alcançar, nenhum microsserviço gRPC. A base é o caminho relativo
- * "/api": em desenvolvimento quem o repassa ao Gateway é o proxy do Vite, em
- * produção é o nginx da vm-client. Nos dois casos o navegador vê uma origem
- * só, e não existe requisição cross-origin.
- *
- * Cada chamada também é registrada num histórico em memória. É o que a página
- * de Diagnóstico exibe: método, rota, corpo enviado, status e corpo recebido.
- */
 
 export const API_BASE = '/api'
 
@@ -28,10 +16,6 @@ export function setToken(value: string | null): void {
 export function getToken(): string | null {
     return token
 }
-
-// ---------------------------------------------------------------------------
-// Histórico das trocas HTTP
-// ---------------------------------------------------------------------------
 
 export interface ApiExchange {
     id: number
@@ -75,10 +59,6 @@ export function subscribeExchanges(listener: (list: ApiExchange[]) => void): () 
         listeners.delete(listener)
     }
 }
-
-// ---------------------------------------------------------------------------
-// Requisição
-// ---------------------------------------------------------------------------
 
 /** O erro que as páginas tratam: traz o status HTTP que o Gateway devolveu. */
 export class ApiError extends Error {

@@ -9,8 +9,6 @@
     gap: 24px;
 }
 
-/* O logotipo é a marca em duas metades: a segunda num bloco reto de destaque.
-   Reto, não pílula — é o mesmo canto do resto da interface. */
 .app-logo {
     display: flex;
     align-items: center;
@@ -70,4 +68,3 @@
     border-color: rgba(255, 255, 255, 0.3);
     color: #FFFFFF;
 }
-

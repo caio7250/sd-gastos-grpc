@@ -1,14 +1,3 @@
-/**
- * Tradução das mensagens que vêm do backend.
- *
- * O servidor fala inglês — é a convenção do repositório, e uma mensagem de
- * protocolo não deveria mudar porque a tela mudou de idioma. Quem localiza é a
- * interface, aqui, no momento de exibir. O Diagnóstico é a exceção de
- * propósito: lá as respostas aparecem cruas, como vieram.
- *
- * Nada que não casar é inventado: a mensagem original passa direto. Uma
- * tradução faltando vira texto em inglês na tela, nunca texto errado.
- */
 
 import { categoryLabel, methodLabel } from './format'
 
@@ -86,8 +75,6 @@ export function translate(message: string | undefined | null): string {
         if (match) return build(match)
     }
 
-    // Mensagens de enum do Pydantic citam os valores aceitos; traduz os rótulos
-    // conhecidos dentro da frase, que é longa demais para casar por inteiro.
     if (/^\w+: Input should be /.test(message)) {
         const [field, ...rest] = message.split(': ')
         const values = rest.join(': ').replace('Input should be ', '')

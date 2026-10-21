@@ -1,7 +1,5 @@
 @import "../../tokens.css";
 
-/* Botão reto, sem elevação. O estado vem da cor da superfície e da borda —
-   nada sobe, nada ganha sombra no hover. */
 .ui-button {
   display: inline-flex;
   align-items: center;

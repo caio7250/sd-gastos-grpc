@@ -1,7 +1,5 @@
 @import "../../tokens.css";
 
-/* Etiqueta reta, sem pílula. O contorno de 1px vale para as três variantes,
-   inclusive a de fundo cheio, para que todas tenham a mesma altura. */
 .ui-badge {
     display: inline-flex;
     gap: 4px;

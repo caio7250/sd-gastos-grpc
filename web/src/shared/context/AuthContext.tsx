@@ -1,11 +1,3 @@
-/**
- * A sessão: o JWT emitido pelo Gateway e o usuário dono dele.
- *
- * O token fica no sessionStorage — some quando a aba fecha, e não é enviado
- * por cookie, então não há CSRF a tratar. Ele vale uma hora; quando vence,
- * qualquer chamada devolve 401, a camada de API dispara UNAUTHORIZED_EVENT e
- * a sessão termina aqui, devolvendo o usuário para a tela de login.
- */
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { getToken, setToken, UNAUTHORIZED_EVENT } from '@/shared/services/api'

@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Verificação executável do Gateway, com os dois microsserviços de verdade.
-
-Sobe Cartões e Gastos em portas efêmeras e chama o Gateway por HTTP (via
-TestClient). Cobre os requisitos da borda: 401 sem token, 400 para JSON
-inválido, 201 na criação, a tradução JSON -> gRPC até o banco, o ciclo
-completo do gasto (criar, alterar, remover) e a rota de linguagem natural.
-
-    python gateway/test_gateway.py
-"""
+"""Testes do Gateway contra os dois microsserviços de verdade."""
 
 import os
 import sys

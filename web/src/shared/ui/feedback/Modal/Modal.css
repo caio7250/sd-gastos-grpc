@@ -12,8 +12,6 @@
     animation: uiOverlayEnter 120ms ease-out;
 }
 
-/* O modal é a única superfície que de fato flutua, então é a única que ainda
-   tem sombra — e ela é longa e suave, não um halo curto em volta da borda. */
 .ui-modal-content {
     background-color: var(--ui-white);
     width: 100%;

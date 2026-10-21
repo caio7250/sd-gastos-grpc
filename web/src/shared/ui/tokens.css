@@ -1,15 +1,3 @@
-/* Tokens da interface.
- *
- * A escala de raio é deliberadamente curta e quase reta: 2px nos controles,
- * 3px nas superfícies, 0 onde a borda encosta noutra borda. Cantos redondos
- * escondem a grade; com a borda quase reta, o alinhamento entre tabela, cartão
- * e formulário fica visível — e é o alinhamento que faz a tela parecer
- * desenhada em vez de montada.
- *
- * Pelo mesmo motivo a sombra quase sumiu: a separação entre superfícies vem de
- * uma linha de 1px, não de um desfoque. Sombra ficou só onde algo de fato
- * flutua — o modal e o toast.
- */
 
 :root {
   /* Marca. Sobrescritos em tempo de execução por applyBrandTheme(). */
@@ -74,8 +62,6 @@
   --ui-font-size-xl: 1.25rem;     /* 20px - títulos de página */
   --ui-font-size-2xl: 1.5rem;     /* 24px - números de destaque */
 
-  /* Entrelinhamento dos títulos: negativo, que é o que separa um título
-     desenhado de um parágrafo em negrito. */
   --ui-tracking-tight: -0.014em;
   --ui-tracking-wide: 0.06em;
 
@@ -93,8 +79,7 @@
   --ui-radius-sm: 2px;
   --ui-radius-md: 2px;
   --ui-radius-lg: 3px;
-  /* Nada é pílula nesta interface. O token continua existindo porque os
-     componentes o citam; o valor é que mudou. */
+
   --ui-radius-full: 2px;
 
   /* Sombra — só para o que flutua de verdade */

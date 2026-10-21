@@ -24,7 +24,6 @@ PGPASSWORD="TROQUE-PELA-SENHA-DO-BANCO"
 # O Cloud SQL recusa conexão sem TLS. "require" criptografa sem exigir
 # certificado de cliente, que é o que a instância espera.
 PGSSLMODE="require"
-# --------------------------------------------------------------------------
 
 echo "==> pacotes"
 export DEBIAN_FRONTEND=noninteractive

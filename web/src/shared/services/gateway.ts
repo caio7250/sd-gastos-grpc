@@ -1,12 +1,3 @@
-/**
- * O contrato do Gateway, em TypeScript.
- *
- * Cada função corresponde a uma rota HTTP, e cada rota corresponde a um RPC
- * gRPC do outro lado. As listas fechadas (categorias, métodos, períodos) não
- * são copiadas aqui: vêm de GET /meta, que as publica a partir dos mesmos
- * tipos que o Gateway usa para validar — uma cópia local sairia de sincronia
- * com a validação real na primeira mudança.
- */
 
 import { api } from './api'
 
@@ -123,9 +114,7 @@ export const validateCard = (name: string, method?: PaymentMethod) =>
 
 export const listExpenses = (filter: ExpenseFilter = {}) =>
     api.get<{ expenses: Expense[] }>('/expenses', {
-        // O filtro é um objeto de campos opcionais; a camada de API espera um
-        // dicionário aberto. Os nomes dos campos são exatamente os que o
-        // Gateway declara em GET /expenses.
+
         query: filter as Record<string, string | undefined>,
     }).then((r) => r.expenses)
 

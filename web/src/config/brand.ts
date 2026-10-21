@@ -1,11 +1,3 @@
-/**
- * Identidade visual, num lugar só.
- *
- * As cores viram custom properties no <html>, e todo o design system em
- * shared/ui/ lê essas variáveis — trocar a marca aqui repinta a aplicação
- * inteira sem tocar em nenhum componente. Verde-azulado sobre azul-noite, que
- * é o que se espera de um aplicativo de dinheiro.
- */
 
 export const brand = {
     appName: 'Grana',

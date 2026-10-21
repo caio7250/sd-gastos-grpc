@@ -13,8 +13,6 @@
     pointer-events: none;
 }
 
-/* Toast flutua, então mantém sombra — mas reta e com régua de 2px, igual ao
-   Alert, para os dois serem reconhecidos como a mesma família. */
 .toast {
     display: flex;
     align-items: flex-start;

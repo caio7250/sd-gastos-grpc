@@ -1,25 +1,4 @@
-"""API Gateway — a única porta de entrada do sistema.
-
-Recebe HTTP/JSON, valida o payload, exige um JWT válido e traduz cada chamada
-para gRPC/protobuf, despachando para o microsserviço dono do dado:
-
-    POST /auth/token             -> (nenhum; emite o JWT)
-    GET  /meta                   -> (nenhum; listas fechadas para a interface)
-    GET  /cards                  -> CardService.ListCards
-    POST /cards                  -> CardService.RegisterCard
-    GET  /cards/validate         -> CardService.ValidateCard
-    POST /expenses               -> ExpenseService.RegisterExpense
-    GET  /expenses               -> ExpenseService.SearchExpenses (stream)
-    GET  /expenses/summary       -> ExpenseService.SummaryByGroup
-    PUT  /expenses/{id}          -> ExpenseService.UpdateExpense
-    DEL  /expenses/{id}          -> ExpenseService.DeleteExpense
-    POST /nlu/interpret          -> Claude, e depois o RPC que o comando pedir
-
-Os microsserviços escutam só em 127.0.0.1: quem está fora da vm-server fala
-com o Gateway, nunca com eles. Documentação interativa em /docs.
-
-    uvicorn app:app --host 0.0.0.0 --port 8000
-"""
+"""API Gateway: recebe HTTP/JSON, autentica, valida e traduz para gRPC."""
 
 import contextvars
 import datetime
@@ -44,7 +23,7 @@ from pydantic import BaseModel, Field, StringConstraints
 import expenses_pb2
 import expenses_pb2_grpc
 
-# O pacote language/ fica na raiz do repositório, um nível acima de gateway/.
+# O pacote language/ fica na raiz do repositório.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from language import nlu, period   # noqa: E402
 
@@ -52,20 +31,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s",
                     datefmt="%H:%M:%S")
 log = logging.getLogger("gateway")
 
-# Sem JWT_SECRET no ambiente, sorteia um a cada início: funciona, mas os tokens
-# emitidos deixam de valer quando o gateway reinicia. Em produção, defina-o.
+# Sem JWT_SECRET no ambiente, os tokens param de valer a cada reinício.
 JWT_SECRET = os.environ.get("JWT_SECRET") or secrets.token_urlsafe(32)
 if "JWT_SECRET" not in os.environ:
     log.warning("JWT_SECRET not set; using a random one for this run")
 JWT_TTL_SECONDS = int(os.environ.get("JWT_TTL_SECONDS", "3600"))
 
-# ---------------------------------------------------------------------------
-# Validação do payload (requisito: 400 para dado inválido ou ausente)
-# ---------------------------------------------------------------------------
-
 Method = Literal["CREDIT", "DEBIT"]
-# Lista fechada também no Gateway: o prompt da LLM já restringe as categorias,
-# mas uma chamada direta à API não passa pelo prompt.
+# Lista fechada: uma chamada direta à API não passa pelo prompt da LLM.
 Category = Literal["food", "transport", "technology", "leisure", "health",
                    "housing", "education", "clothing", "other"]
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
@@ -101,14 +74,6 @@ class CommandIn(BaseModel):
 
 app = FastAPI(title="Expense tracking gateway",
               description="HTTP/JSON in front of the gRPC microservices.")
-
-# O navegador e o Gateway têm sempre a mesma origem: em produção o nginx da
-# vm-client serve o frontend e repassa /api para cá, e em desenvolvimento o
-# proxy do Vite faz o mesmo. Nenhuma requisição da interface é cross-origin, e
-# este middleware é rede de segurança — para quem apontar um frontend direto
-# para o Gateway, sem proxy. CORS_ORIGINS restringe a lista quando se quer;
-# como a autenticação é por cabeçalho e não por cookie, credentials fica
-# desligado de propósito.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",")],
@@ -118,30 +83,12 @@ app.add_middleware(
 )
 
 
-# ---------------------------------------------------------------------------
-# Rastreio da requisição
-#
-# Uma requisição HTTP vira várias chamadas gRPC — um POST /expenses aciona
-# RegisterExpense, que por sua vez aciona ValidateCard. Sem um identificador
-# comum, o log mostra as três linhas em sequência e quem lê precisa supor que
-# pertencem à mesma operação; com duas pessoas usando o sistema ao mesmo
-# tempo, essa suposição deixa de valer.
-#
-# O id nasce aqui, viaja na metadata de cada chamada gRPC e volta ao cliente
-# no cabeçalho X-Request-Id. O contextvar é o que permite a função call() lê-lo
-# sem que toda rota precise recebê-lo como parâmetro.
-# ---------------------------------------------------------------------------
-
 REQUEST_ID_KEY = "x-request-id"
 _request_id = contextvars.ContextVar("request_id", default="-")
 
 
 def _clean_id(value):
-    """Aceita um id vindo de fora, mas só se for curto e alfanumérico.
-
-    O valor vai parar no log e na metadata gRPC; aceitá-lo cru deixaria quem
-    chama escolher o que escrever no nosso log.
-    """
+    """Aceita um id vindo de fora, mas só se for curto e alfanumérico."""
     if not value:
         return None
     safe = "".join(c for c in value if c.isalnum() or c in "-_")[:32]
@@ -150,11 +97,7 @@ def _clean_id(value):
 
 @app.middleware("http")
 async def tag_request(request: Request, call_next):
-    """Dá um identificador curto a cada requisição e o devolve na resposta.
-
-    Um id vindo de fora é respeitado — assim um proxy, um teste ou a própria
-    interface podem escolher o seu, e o rastro atravessa a borda inteira.
-    """
+    """Dá um identificador curto a cada requisição e o devolve na resposta."""
     rid = _clean_id(request.headers.get(REQUEST_ID_KEY)) or secrets.token_hex(4)
     token = _request_id.set(rid)
     try:
@@ -174,10 +117,6 @@ async def bad_request(request, exc):
         problems.append("%s: %s" % (field, error["msg"]) if field else error["msg"])
     return JSONResponse(status_code=400, content={"detail": "; ".join(problems)})
 
-
-# ---------------------------------------------------------------------------
-# Autenticação JWT (requisito: 401 na borda, antes de chegar a qualquer serviço)
-# ---------------------------------------------------------------------------
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -199,8 +138,7 @@ def login(body: Credentials):
     """Troca usuário e senha por um JWT. Um único usuário, vindo do ambiente."""
     user = os.environ.get("GATEWAY_USER", "")
     password = os.environ.get("GATEWAY_PASSWORD", "")
-    # compare_digest leva o mesmo tempo acertando ou errando, então a resposta
-    # não revela quantos caracteres da senha estavam certos.
+    # compare_digest: tempo constante, não vaza quantos caracteres bateram.
     valid = (bool(user and password)
              and hmac.compare_digest(body.username.encode(), user.encode())
              and hmac.compare_digest(body.password.encode(), password.encode()))
@@ -217,14 +155,9 @@ def health():
     return {"status": "ok"}
 
 
-# ---------------------------------------------------------------------------
-# Tradução JSON <-> gRPC
-# ---------------------------------------------------------------------------
-
 METHOD_TO_PROTO = {"CREDIT": expenses_pb2.CREDIT, "DEBIT": expenses_pb2.DEBIT}
 METHOD_FROM_PROTO = {v: k for k, v in METHOD_TO_PROTO.items()}
-# O prompt do modelo fala "credit"/"debit" minúsculos; o contrato HTTP fala
-# "CREDIT"/"DEBIT". Os dois dicionários abaixo fazem a ponte nas duas direções.
+# O prompt usa "credit"/"debit"; o contrato HTTP usa "CREDIT"/"DEBIT".
 METHOD_LABEL = {v: k.lower() for k, v in METHOD_TO_PROTO.items()}
 METHOD_FROM_LABEL = {k.lower(): k for k in METHOD_TO_PROTO}
 
@@ -250,11 +183,7 @@ def expenses():
 
 
 def call(name, rpc, request, stream=False):
-    """Serializa em protobuf, chama o microsserviço e traduz erros para HTTP.
-
-    O prazo de 10 segundos vale para toda chamada: sem deadline, um serviço
-    lento prenderia o Gateway junto com ele.
-    """
+    """Serializa em protobuf, chama o microsserviço e traduz erros para HTTP."""
     rid = _request_id.get()
     log.info("[%s] %-16s JSON -> protobuf %d bytes", rid, name, request.ByteSize())
     try:
@@ -290,10 +219,6 @@ def expense_filter(
         category=category or "", start_date=start_date or "",
         end_date=end_date or "")
 
-
-# ---------------------------------------------------------------------------
-# Rotas protegidas: toda rota daqui para baixo exige o JWT
-# ---------------------------------------------------------------------------
 
 api = APIRouter(dependencies=[Depends(require_token)])
 
@@ -378,11 +303,7 @@ def delete_expense(expense_id: int = Path(gt=0, description="id do gasto")):
 
 @api.get("/meta")
 def meta():
-    """As listas fechadas que a interface usa para montar os formulários.
-
-    Elas já existem aqui como tipos Literal — publicá-las evita que o frontend
-    mantenha uma segunda cópia que sai de sincronia com a validação real.
-    """
+    """As listas fechadas que a interface usa para montar os formulários."""
     return {
         "methods": list(METHOD_TO_PROTO),
         "categories": list(get_args(Category)),
@@ -393,16 +314,6 @@ def meta():
     }
 
 
-# ---------------------------------------------------------------------------
-# Linguagem natural
-#
-# O texto vira um comando estruturado ({"action", "args"}) e o Gateway despacha
-# esse comando pelos mesmos RPCs das rotas acima — nenhum microsserviço sabe
-# que existe um modelo de linguagem. Sem ANTHROPIC_API_KEY, ou se a API falhar,
-# cai no interpretador por regras de language/nlu.py: a demonstração não
-# depende da rede até a Anthropic.
-# ---------------------------------------------------------------------------
-
 def _labeled_cards():
     """Cartões reais, como o prompt do modelo os espera: [(nome, ['credit'])]."""
     response = call("ListCards", cards().ListCards, expenses_pb2.ListCardsRequest())
@@ -410,12 +321,7 @@ def _labeled_cards():
 
 
 def _interpret(text, cards_list):
-    """Texto -> (comando, qual interpretador respondeu, motivo da queda).
-
-    A queda para o interpretador offline é informada na resposta em vez de
-    silenciosa: numa apresentação, saber que a LLM ficou fora do ar importa
-    tanto quanto o comando ter funcionado.
-    """
+    """Texto -> (comando, qual interpretador respondeu, motivo da queda)."""
     today = datetime.date.today().isoformat()
     if os.environ.get("ANTHROPIC_API_KEY"):
         try:
@@ -428,12 +334,7 @@ def _interpret(text, cards_list):
 
 
 def _resolve_card(name, method, registered):
-    """Confere o cartão no CardService antes de qualquer gravação.
-
-    Devolve (name, method, problema). `problema` é None quando o par existe;
-    caso contrário é o dict que a interface usa para oferecer as saídas —
-    corrigir para um cartão cadastrado, ou cadastrar o novo e lançar nele.
-    """
+    """Confere o cartão no CardService antes de qualquer gravação."""
     if not name:
         return None, None, {"status": "needs_card",
                             "message": "which card was it?",
@@ -485,18 +386,13 @@ def _do_register_card(args):
 
 
 def _do_register_expense(args, registered):
-    # Quem calcula a data é o datetime, nunca o modelo: ele devolve um rótulo.
-    # A conta vem antes da validação do cartão de propósito: se o cartão não
-    # conferir, a data já resolvida vai junto no "pending", e a interface
-    # completa o lançamento sem precisar interpretar "ontem" por conta própria.
     when = args.get("date") or period.transaction_date(
         args.get("date_label") or args.get("period") or "")
 
     name, method, problem = _resolve_card(
         args.get("card", ""), str(args.get("method", "")).upper() or "", registered)
     if problem:
-        # O comando não é descartado: volta para a interface com o que falta e
-        # as opções, para o usuário completar sem redigitar a frase.
+        # Devolve o que falta e as opções, em vez de descartar o comando.
         problem["pending"] = dict(args, date=when)
         return problem
 

@@ -1,5 +1,3 @@
-/* Estilos globais: o esqueleto das páginas.
-   Os componentes reutilizáveis trazem o próprio CSS (shared/ui/). */
 
 @import '../../shared/ui/tokens.css';
 

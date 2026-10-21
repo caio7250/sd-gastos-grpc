@@ -12,11 +12,6 @@ import { Alert, Spinner, ToastContainer } from '@/shared/ui/feedback'
 import { translate } from '@/shared/messages'
 import './CardsPage.css'
 
-/**
- * Cartões. Um cartão é a dupla (nome, método) — "Nubank crédito" e "Nubank
- * débito" são dois registros —, e é por isso que a tela agrupa por nome e
- * mostra os métodos como etiquetas.
- */
 const CardsPage: React.FC = () => {
     const meta = useMeta()
     const { toasts, dismiss, success, info, error: toastError } = useToast()

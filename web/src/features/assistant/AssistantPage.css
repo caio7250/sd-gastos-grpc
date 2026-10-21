@@ -2,8 +2,6 @@
     margin-bottom: 12px;
 }
 
-/* A barra de comando é a linha mais importante da tela: um retângulo só, com
-   o botão encaixado dentro dele em vez de flutuando ao lado. */
 .assistant-form {
     display: flex;
     align-items: center;

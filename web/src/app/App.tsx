@@ -10,12 +10,6 @@ import CardsPage from '@/features/cards/CardsPage'
 import AssistantPage from '@/features/assistant/AssistantPage'
 import DiagnosticsPage from '@/features/diagnostics/DiagnosticsPage'
 
-/**
- * Sem sessão, só existe a tela de login — as rotas de dentro nem são montadas.
- * Não é segurança (a de verdade é o 401 do servidor, que independe do que o
- * navegador acha); é só não desenhar uma tela que não teria dados para
- * preencher.
- */
 const App: React.FC = () => {
     const { authenticated } = useAuth()
 

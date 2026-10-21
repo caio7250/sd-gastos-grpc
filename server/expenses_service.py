@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Microsserviço de Gastos — dono da tabela de gastos.
-
-Não conhece a tabela de cartões. Antes de gravar um gasto, pergunta ao
-microsserviço de Cartões, via gRPC, se o cartão existe naquele método. É a
-comunicação entre microsserviços do sistema: se Cartões estiver fora do ar,
-Gastos recusa o registro em vez de gravar um gasto que ninguém conferiu.
-"""
+"""Microsserviço de Gastos. Consulta o de Cartões antes de gravar."""
 
 import os
 
@@ -59,13 +53,7 @@ class ExpenseService(expenses_pb2_grpc.ExpenseServiceServicer):
         )
 
     def _validate_card(self, card, method, context):
-        """Pergunta ao microsserviço de Cartões se o par (cartão, método) existe.
-
-        É a comunicação entre microsserviços do sistema, e o mesmo passo vale
-        para criar e para alterar: uma edição pode trocar o cartão tanto quanto
-        uma criação pode inventá-lo. Se o serviço de Cartões estiver fora do ar,
-        aborta — gravar às cegas é pior que recusar.
-        """
+        """Pergunta ao microsserviço de Cartões se o par (cartão, método) existe."""
         try:
             return self._cards.ValidateCard(
                 expenses_pb2.ValidateCardRequest(name=card.strip(), method=method),

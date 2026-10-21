@@ -31,13 +31,6 @@ interface Entry {
 
 let nextEntryId = 1
 
-/**
- * O assistente: uma frase em português vira uma operação.
- *
- * Quem interpreta o texto é o servidor, em POST /nlu/interpret; o navegador só
- * manda a frase e recebe o resultado já executado. Quando falta a informação de
- * um cartão, a resposta volta com as opções em vez de gravar pela metade.
- */
 const AssistantPage: React.FC = () => {
     const [text, setText] = useState('')
     const [entries, setEntries] = useState<Entry[]>([])
@@ -157,8 +150,6 @@ const AssistantPage: React.FC = () => {
         </>
     )
 }
-
-// ---------------------------------------------------------------------------
 
 const EntryCard: React.FC<{
     entry: Entry

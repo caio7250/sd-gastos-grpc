@@ -7,12 +7,6 @@ import { Button, Input } from '@/shared/ui/forms'
 import { Alert } from '@/shared/ui/feedback'
 import './LoginPage.css'
 
-/**
- * A porta de entrada. Troca usuário e senha por um JWT em POST /auth/token —
- * a única rota que não exige token. Daí em diante toda chamada leva o
- * cabeçalho Authorization, e quem não levar leva 401 antes de qualquer
- * processamento.
- */
 const LoginPage: React.FC = () => {
     const { signIn, expiredMessage, clearExpiredMessage } = useAuth()
     const [username, setUsername] = useState('')

@@ -1,9 +1,5 @@
-// Contrato entre o Microsserviço A (cliente) e o Microsserviço B (servidor).
-// Os dois lados compilam este arquivo e passam a falar exatamente a mesma língua.
-//
-// Os números (= 1, = 2, ...) não são valores: são a identidade de cada campo no
-// binário do Protocol Buffers. O nome do campo nunca vai para a rede — é por isso
-// que a mensagem é compacta. Nunca reutilize um número já usado.
+// Contrato compartilhado pelo Gateway e pelos microsserviços.
+// Os números dos campos são a identidade deles no binário: nunca reutilize um.
 
 syntax = "proto3";
 
@@ -17,9 +13,6 @@ enum PaymentMethod {
   DEBIT  = 2;
 }
 
-// Um cartão é a dupla (nome, método). "Nubank crédito" e "Nubank débito" são
-// registros distintos — é isso que permite responder "gastos do Nubank no
-// crédito" sem ambiguidade.
 message Card {
   string name = 1;
   repeated PaymentMethod methods = 2;
@@ -62,9 +55,6 @@ message ListCardsResponse {
   repeated Card cards = 1;
 }
 
-// Chamada ANTES de registrar ou consultar, para que um cartão inventado pela
-// LLM nunca chegue a virar uma operação no banco. Quem chama: o cliente (para
-// oferecer correção ao usuário) e o serviço de Gastos (para decidir se grava).
 message ValidateCardRequest {
   string        name   = 1;
   PaymentMethod method = 2;  // 0 = valida apenas o nome do cartão
@@ -91,10 +81,6 @@ message RegisterExpenseResponse {
   string  message = 3;
 }
 
-// Alteração de um gasto já gravado. Carrega o registro inteiro, não só os
-// campos mexidos: o cliente manda o gasto como ele deve ficar, e o serviço
-// revalida o cartão no CardService antes de gravar — uma edição pode trocar o
-// cartão tanto quanto uma criação pode inventá-lo.
 message UpdateExpenseRequest {
   int32         id          = 1;
   string        product     = 2;
@@ -128,10 +114,6 @@ message SummaryResponse {
   double              grand_total = 2;
 }
 
-// Dois microsserviços, dois contratos. Eles compartilham as mensagens acima,
-// mas cada um é dono dos seus dados: Cartões guarda os cartões, Gastos guarda
-// os gastos, e Gastos só sabe se um cartão existe perguntando a Cartões.
-
 // Microsserviço de Cartões (porta 50052).
 service CardService {
   rpc RegisterCard    (RegisterCardRequest)    returns (RegisterCardResponse);
@@ -143,16 +125,10 @@ service CardService {
 service ExpenseService {
   rpc RegisterExpense (RegisterExpenseRequest) returns (RegisterExpenseResponse);
 
-  // server-streaming: o servidor devolve os gastos um a um, conforme os
-  // encontra, em vez de montar a lista inteira na memória. É o streaming
-  // do HTTP/2 aparecendo no contrato.
   rpc SearchExpenses  (Filter)                 returns (stream Expense);
 
   rpc SummaryByGroup  (SummaryRequest)         returns (SummaryResponse);
 
-  // Alteração e remoção fecham o ciclo de vida do gasto. UpdateExpense devolve
-  // a mesma RegisterExpenseResponse do registro: o corpo da resposta é o gasto
-  // como ficou, e ok=false quando o cartão da edição não existe.
   rpc UpdateExpense   (UpdateExpenseRequest)   returns (RegisterExpenseResponse);
   rpc DeleteExpense   (DeleteExpenseRequest)   returns (DeleteExpenseResponse);
 }

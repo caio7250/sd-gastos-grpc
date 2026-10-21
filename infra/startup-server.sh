@@ -16,9 +16,6 @@ set -euo pipefail
 REPO_URL="https://github.com/murilorrs/sd-gastos-grpc.git"
 TARGET_DIR="/opt/sd-gastos-grpc"
 
-# IPs INTERNOS dos microsserviços, com as portas. O Gateway não fala com o
-# banco: quem toca o PostgreSQL são eles, então esta VM não recebe as
-# credenciais do Cloud SQL.
 CARDS_ADDR="10.128.0.4:50052"
 EXPENSES_ADDR="10.128.0.5:50051"
 
@@ -32,7 +29,6 @@ GATEWAY_PASSWORD="TROQUE-ESTA-SENHA"
 # Sem ela o sistema funciona igual, usando o interpretador por regras.
 ANTHROPIC_API_KEY=""
 ANTHROPIC_MODEL="claude-haiku-4-5"
-# --------------------------------------------------------------------------
 
 echo "==> pacotes"
 export DEBIAN_FRONTEND=noninteractive

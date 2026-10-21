@@ -15,8 +15,6 @@
     gap: 1px;
 }
 
-/* Item ativo marcado por uma régua de 2px à esquerda, e não por uma cápsula
-   colorida: a régua fica presa à borda da coluna e reforça o alinhamento. */
 .sidebar-link {
     display: flex;
     align-items: center;

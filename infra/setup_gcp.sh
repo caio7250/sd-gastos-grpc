@@ -13,18 +13,6 @@ source ./config.sh
 gcloud config set project "$PROJECT" --quiet
 gcloud services enable compute.googleapis.com --quiet
 
-# ---------------------------------------------------------------------------
-# Regra de firewall do API Gateway.
-#
-# A única porta da vm-server é a 8000 do Gateway; os microsserviços vivem nas
-# suas próprias VMs, protegidos pelo par de regras mais abaixo.
-# As duas restrições são o que faz esta regra significar alguma coisa:
-#   --source-ranges  só aceita tráfego da faixa interna da VPC (nada da internet)
-#   --target-tags    só se aplica às VMs marcadas como grpc-server
-#
-# (A regra allow-grpc-internal, da porta 50051, era do Trabalho 1, quando o
-# cliente falava gRPC direto com o servidor. Não é mais usada.)
-# ---------------------------------------------------------------------------
 GATEWAY_PORT=8000
 if gcloud compute firewall-rules describe allow-gateway-internal --quiet >/dev/null 2>&1; then
   echo "==> firewall rule allow-gateway-internal already exists"
@@ -40,14 +28,6 @@ else
     --description="API gateway only inside the VPC, only for VMs tagged grpc-server"
 fi
 
-# ---------------------------------------------------------------------------
-# Regra de firewall do frontend.
-#
-# A vm-client publica a interface web na porta 80, e é a única porta do sistema
-# aberta para a internet — é por ela que o navegador da apresentação entra. O
-# Gateway continua alcançável só de dentro da VPC, e os microsserviços gRPC,
-# só de dentro da própria vm-server.
-# ---------------------------------------------------------------------------
 if gcloud compute firewall-rules describe allow-web-external --quiet >/dev/null 2>&1; then
   echo "==> firewall rule allow-web-external already exists"
 else
@@ -62,24 +42,6 @@ else
     --description="Web frontend (nginx) on the client VM - the only port open to the internet"
 fi
 
-# ---------------------------------------------------------------------------
-# Regras de firewall dos microsserviços.
-#
-# Agora que cada serviço tem a sua VM, eles escutam em 0.0.0.0 — o loopback
-# não serve mais de muro. O isolamento passa a ser destas duas regras, nesta
-# ordem (no GCP, prioridade menor é avaliada primeiro):
-#
-#   800  ALLOW  tcp:50051,50052  de quem tem a tag grpc-server ou grpc-service
-#   900  DENY   tcp:50051,50052  de qualquer origem
-#
-# A regra default-allow-internal, que o GCP cria sozinho em toda VPC e libera
-# todas as portas entre VMs, tem prioridade 65534 — nunca chega a ser avaliada
-# para estas portas. Sem o DENY, ela sozinha deixaria a vm-client alcançar os
-# microsserviços, e o requisito de o frontend não falar direto com eles cairia.
-#
-# grpc-service aparece como origem porque o serviço de Gastos chama o de
-# Cartões: um microsserviço precisa alcançar o outro.
-# ---------------------------------------------------------------------------
 if gcloud compute firewall-rules describe allow-grpc-internal --quiet >/dev/null 2>&1; then
   echo "==> firewall rule allow-grpc-internal already exists"
 else
