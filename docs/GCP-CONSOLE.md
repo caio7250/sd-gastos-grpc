@@ -1,7 +1,37 @@
-# Subindo o sistema pelo Google Cloud Console
+# Subindo o sistema
 
-Passo a passo pelo console, sem `gcloud` na sua máquina. Quem prefere linha de
-comando tem `infra/setup_gcp.sh` e `infra/deploy.sh`, que fazem o mesmo.
+Duas formas: **por script**, que faz quase tudo, ou **pelo console**, clicando.
+
+## Por script (recomendado)
+
+```bash
+gcloud auth login
+PROJECT=seu-projeto bash infra/provision_gcp.sh
+```
+
+Isso cria tudo: APIs, rede privada, Cloud SQL, as quatro regras de firewall e
+as quatro VMs já configuradas, com os IPs de uma injetados na outra. Ao final
+grava `credenciais.txt` com o endereço da interface e as senhas geradas.
+
+Leva de 20 a 30 minutos, a maior parte esperando o Cloud SQL.
+
+Depois:
+
+```bash
+bash infra/verifica.sh
+```
+
+que confere as VMs, os serviços, a conectividade entre eles, o isolamento
+(a vm-client **não** pode alcançar os microsserviços) e o fluxo ponta a ponta.
+
+**O que precisa ser feito na mão, antes:** instalar o `gcloud`, rodar
+`gcloud auth login` e ter uma conta de faturamento ativa. Só isso — o script
+cuida de vincular o faturamento ao projeto, se já houver uma conta aberta.
+
+O resto deste documento é o caminho pelo console, para quem preferir clicar ou
+precisar entender o que o script faz.
+
+---
 
 O alvo é esta topologia — **cada serviço na sua própria VM**:
 

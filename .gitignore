@@ -24,3 +24,6 @@ __pycache__/
 # Temporários do deploy.sh (contêm a senha do banco)
 *.env.tmp
 server.env
+
+# Gerado pelo provision_gcp.sh (contém senhas)
+credenciais.txt
